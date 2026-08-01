@@ -1,0 +1,40 @@
+# Example evaluation fixture (Phase 1). Copy to data/fixture.yaml and label
+# real queries once dev videos are in data/videos/. Schema is validated by
+# src/aic/eval/fixture.py; every ground-truth video_id must appear in
+# corpus_videos, and a case may list several acceptable ranges when the same
+# scene is re-broadcast in other videos.
+
+corpus_videos:
+  - news-A
+  - news-B
+
+cases:
+  - query_id: q001
+    kind: kis_t
+    text: "người dẫn chương trình mặc áo xanh ngồi tại trường quay"
+    truths:
+      - video_id: news-A
+        t_start_ms: 12000
+        t_end_ms: 18000
+
+  - query_id: q002
+    kind: kis_v
+    clip_path: clips/q002.mp4
+    truths:
+      - video_id: news-B
+        t_start_ms: 45000
+        t_end_ms: 49000
+      - video_id: news-A
+        t_start_ms: 301000
+        t_end_ms: 305000
+
+  - query_id: q003
+    kind: kis_c
+    text: "một buổi họp báo trong nhà"
+    reveals:
+      - "có hai lá cờ phía sau bục phát biểu"
+      - "người phát biểu đeo kính, buổi tối"
+    truths:
+      - video_id: news-B
+        t_start_ms: 120000
+        t_end_ms: 126000

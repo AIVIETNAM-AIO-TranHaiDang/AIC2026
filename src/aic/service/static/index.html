@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AIC 2026 — retrieval console</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <form id="search-form">
+      <input id="query" type="text" autocomplete="off"
+             placeholder="Query (Vietnamese or English) — Enter to search">
+      <button type="submit">Search</button>
+    </form>
+    <form id="qa-form">
+      <input id="question" type="text" autocomplete="off"
+             placeholder="Question (VQA Track A) — Enter to ask">
+      <button type="submit">Ask</button>
+    </form>
+    <div id="session-panel">
+      <button id="session-new" type="button" title="Start a KIS-C session">KIS-C session</button>
+      <span id="session-info" hidden>
+        <span id="session-version"></span>
+        <input id="reveal-input" type="text" placeholder="New revealed detail — Enter to add">
+      </span>
+    </div>
+  </header>
+
+  <div id="statusbar">
+    <span id="status">Ready.</span>
+    <span id="advisor" hidden></span>
+    <span id="planner" hidden></span>
+    <span id="escalations" hidden></span>
+  </div>
+
+  <aside id="constraints" hidden>
+    <h2>Constraint stack</h2>
+    <ol id="constraint-list"></ol>
+  </aside>
+
+  <main id="results" tabindex="-1"></main>
+
+  <section id="qa-results" hidden>
+    <h2>Answer cards (Track A)</h2>
+    <p id="qa-plan"></p>
+    <ol id="qa-cards"></ol>
+    <div id="qa-groups-wrap" hidden>
+      <h2>Voted answers (Track B) &mdash; <kbd>n</kbd> next group</h2>
+      <ol id="qa-groups"></ol>
+    </div>
+    <p id="qa-count" hidden></p>
+    <p id="qa-hint" hidden></p>
+    <div id="qa-reverse-wrap" hidden>
+      <h2>Reverse-retrieval answers</h2>
+      <ol id="qa-reverse"></ol>
+    </div>
+  </section>
+
+  <dialog id="submit-dialog">
+    <h2>Submission payload</h2>
+    <pre id="submit-payload"></pre>
+    <button id="submit-close" type="button">Close (Esc)</button>
+  </dialog>
+
+  <footer id="help">
+    <kbd>Enter</kbd> search &nbsp; <kbd>1</kbd>–<kbd>9</kbd> select &nbsp;
+    <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>f</kbd> more like this &nbsp;
+    <kbd>x</kbd> not this &nbsp; <kbd>m</kbd> similar &nbsp; <kbd>s</kbd> submit
+    &nbsp; <kbd>r</kbd> re-rank &nbsp; <kbd>i</kbd> imagine &nbsp;
+    <kbd>v</kbd> verify
+  </footer>
+
+  <script src="/static/app.js"></script>
+  <script>
+    // VQA Track A/B: isolated from the KIS console (app.js). Asks /api/qa (or
+    // its streaming twin /api/qa/stream when the server offers it) and renders
+    // answer cards, voted groups, count, reverse answers, and the EV hint. The
+    // routes exist only when vqa.enabled server-side.
+    (function () {
+      const form = document.getElementById("qa-form");
+      const section = document.getElementById("qa-results");
+      const planEl = document.getElementById("qa-plan");
+      const cardsEl = document.getElementById("qa-cards");
+      const groupsWrap = document.getElementById("qa-groups-wrap");
+      const groupsEl = document.getElementById("qa-groups");
+      const countEl = document.getElementById("qa-count");
+      const hintEl = document.getElementById("qa-hint");
+      const revWrap = document.getElementById("qa-reverse-wrap");
+      const revEl = document.getElementById("qa-reverse");
+      const status = document.getElementById("status");
+      if (!form) return;
+
+      // Its own stream-availability cache: a /api/qa/stream 404 (VQA disabled,
+      // or streaming off) must not disable the KIS search stream, so this is
+      // separate from app.js's streamingEnabled.
+      let qaStreamOk;
+
+      // Track B rendering: the winning group is pre-selected; the KIS-C
+      // narrowing pattern (press "n" after a DRES reject) advances to the next
+      // group. Selecting a group fills the submit dialog with its top moment's
+      // (video_id, timestamp) via the existing serializer.
+      let groupIndex = 0;
+      let currentGroups = [];
+      function highlightGroup() {
+        [...groupsEl.children].forEach((li, i) => {
+          li.classList.toggle("qa-group-active", i === groupIndex);
+        });
+      }
+      async function fillSubmit(group) {
+        const member = (group.members || [])[0];
+        if (!member) return;
+        try {
+          const resp = await fetch("/api/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              video_id: member.video_id,
+              timestamp_ms: member.timestamp_ms,
+            }),
+          });
+          const payload = await resp.json();
+          const dialog = document.getElementById("submit-dialog");
+          document.getElementById("submit-payload").textContent =
+            JSON.stringify({ answer: group.answer, ...payload }, null, 2);
+          if (dialog && dialog.showModal) dialog.showModal();
+        } catch (err) {
+          status.textContent = "Submit build failed: " + err;
+        }
+      }
+      function renderGroups(groups) {
+        currentGroups = groups || [];
+        groupIndex = 0;
+        groupsEl.innerHTML = "";
+        if (!currentGroups.length) {
+          groupsWrap.hidden = true;
+          return;
+        }
+        currentGroups.forEach((group, i) => {
+          const li = document.createElement("li");
+          const flag = group.valid ? "" : ' <em class="qa-noguess">(malformed)</em>';
+          // vote_min_agree moments agreed: safe to submit without waiting.
+          const agreed = group.confident
+            ? ' <em class="qa-confident">(agreed)</em>' : "";
+          li.innerHTML =
+            '<strong class="qa-guess">' + group.answer + "</strong>" + flag +
+            agreed +
+            '<span class="qa-prov"> score ' + group.score.toFixed(3) +
+            " · " + (group.members || []).length + " moment(s)</span>";
+          li.addEventListener("click", () => {
+            groupIndex = i;
+            highlightGroup();
+            fillSubmit(group);
+          });
+          groupsEl.appendChild(li);
+        });
+        groupsWrap.hidden = false;
+        highlightGroup();
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "n" || groupsWrap.hidden || !currentGroups.length) return;
+        const tag = (event.target.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea") return;
+        event.preventDefault();
+        groupIndex = (groupIndex + 1) % currentGroups.length;
+        highlightGroup();
+        fillSubmit(currentGroups[groupIndex]);
+      });
+
+      // Per-slice renderers — each streamed event paints exactly its slice, and
+      // the one-shot fallback calls them all from the full response.
+      function renderPlan(plan) {
+        const p = plan || {};
+        planEl.textContent =
+          "archetype: " + (p.archetype || "?") +
+          " · answer type: " + (p.expected_answer_type || "?");
+      }
+      function renderCards(list) {
+        cardsEl.innerHTML = "";
+        (list || []).forEach((card) => {
+          const li = document.createElement("li");
+          const guess = card.answer_guess
+            ? '<strong class="qa-guess">' + card.answer_guess + "</strong>"
+            : '<em class="qa-noguess">(located moment — read the evidence)</em>';
+          const prov = card.provenance
+            ? '<span class="qa-prov">' + card.provenance.field + ": " +
+              card.provenance.value + "</span>"
+            : "";
+          const thumb = (card.frames && card.frames.length)
+            ? '<img class="qa-thumb" src="' + card.frames[0] + '" alt="">'
+            : "";
+          li.innerHTML =
+            thumb +
+            '<div class="qa-body">' + guess + " " + prov +
+            '<div class="qa-loc">' + card.video_id + " @ " +
+            card.timestamp_ms + " ms · score " + card.score.toFixed(3) +
+            "</div></div>";
+          cardsEl.appendChild(li);
+        });
+      }
+      function renderCount(count) {
+        if (count) {
+          countEl.textContent =
+            "Count: " + count.count + " " + count.concept + " (" +
+            (count.provenance ? count.provenance.note : count.source) + ")";
+          countEl.hidden = false;
+        } else {
+          countEl.hidden = true;
+        }
+      }
+      function renderHint(hint) {
+        if (hint) {
+          hintEl.textContent = "Hint: " + hint.replace(/_/g, " ");
+          hintEl.hidden = false;
+        } else {
+          hintEl.hidden = true;
+        }
+      }
+      function renderReverse(list) {
+        revEl.innerHTML = "";
+        const reverse = list || [];
+        reverse.forEach((r) => {
+          const li = document.createElement("li");
+          li.innerHTML =
+            '<strong class="qa-guess">' + r.answer + "</strong>" +
+            '<span class="qa-prov"> ' + r.video_id + " · score " +
+            r.score.toFixed(3) + " · found by searching the answer</span>";
+          revEl.appendChild(li);
+        });
+        revWrap.hidden = reverse.length === 0;
+      }
+      // Clear every slice so a new question never shows a previous one's
+      // count/hint/reverse/groups before the fresh values stream in.
+      function resetQa() {
+        renderCards([]);
+        renderGroups([]);
+        renderCount(null);
+        renderHint(null);
+        renderReverse([]);
+      }
+      function applyQa(data) {
+        renderPlan(data.plan);
+        renderCards(data.cards);
+        renderGroups(data.answer_groups);
+        renderCount(data.count_answer);
+        renderHint(data.ev_hint);
+        renderReverse(data.reverse_answers);
+        const nGroups = (data.answer_groups || []).length;
+        status.textContent =
+          "QA: " + (data.cards || []).length + " cards" +
+          (nGroups ? " · " + nGroups + " voted answer(s)" : "") + ".";
+      }
+
+      async function askOneShot(body) {
+        let resp;
+        try {
+          resp = await fetch("/api/qa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        } catch (err) {
+          status.textContent = "QA request failed: " + err;
+          return;
+        }
+        if (resp.status === 404) {
+          status.textContent = "VQA is disabled on this profile (vqa.enabled: false).";
+          return;
+        }
+        if (!resp.ok) {
+          status.textContent = "QA error " + resp.status;
+          return;
+        }
+        applyQa(await resp.json());
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const question = document.getElementById("question").value.trim();
+        if (!question) return;
+        status.textContent = "Asking…";
+        section.hidden = false;
+        resetQa();
+        const body = { question };
+        try {
+          if (qaStreamOk !== false) {
+            const ran = await streamNdjson("/api/qa/stream", body, (evt) => {
+              if (evt.event === "track_a") {
+                renderPlan(evt.plan);
+                renderCards(evt.cards);
+                status.textContent =
+                  "QA: " + (evt.cards || []).length + " cards · reading…";
+              } else if (evt.event === "reverse") {
+                renderReverse(evt.reverse_answers);
+              } else if (evt.event === "count") {
+                renderCount(evt.count_answer);
+              } else if (evt.event === "reads") {
+                renderGroups(evt.answer_groups);
+                const n = (evt.answer_groups || []).length;
+                status.textContent = "QA: " + n + " voted answer(s).";
+              } else if (evt.event === "hint") {
+                renderHint(evt.ev_hint);
+              }
+            });
+            if (ran) {
+              qaStreamOk = true;
+              return;
+            }
+            qaStreamOk = false; // /api/qa/stream absent — use the one-shot route
+          }
+          await askOneShot(body);
+        } catch (err) {
+          status.textContent = "QA request failed: " + err;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# Example VQA evaluation fixture (note 18 phase 3). Copy to data/fixture.qa.yaml
+# and author real `kind: qa` cases from your corpus (the on-screen text / speech
+# is the ground truth). Schema is validated by src/aic/eval/fixture.py.
+#
+# A qa case adds three fields to a KIS case:
+#   question          — the question asked about the moment (any language)
+#   accepted_answers  — a DRES-style accept list (paraphrases + variants); the
+#                       harness matches after the configured normalisation, so
+#                       "ba" matches "3" and "xanh dương" matches "xanh lam"
+#   archetype         — optional (count/read_text/entity/attribute/cumulative/
+#                       other); None lets the compiler decide. A label also
+#                       tests the compiler and drives the per-archetype metric.
+# truths are the moment(s) the answer is visible/spoken in, exactly like a KIS
+# case; eval.hit_tolerance_ms widens the accept window.
+#
+# Score it with:
+#   python scripts/run_vqa_eval.py --config configs/t0-vqa.yaml \
+#       --fixture data/fixture.qa.yaml
+
+corpus_videos:
+  - news-A
+  - news-B
+
+cases:
+  - query_id: qa001
+    kind: qa
+    question: "Đài truyền hình phát sóng chương trình này tên là gì?"
+    archetype: entity
+    accepted_answers: ["HTV", "Đài Truyền hình Thành phố Hồ Chí Minh"]
+    truths:
+      - video_id: news-A
+        t_start_ms: 0
+        t_end_ms: 16000
+
+  - query_id: qa002
+    kind: qa
+    question: "Dòng tiêu đề tin chính hiển thị trên màn hình nói về điều gì?"
+    archetype: read_text
+    accepted_answers:
+      - "Hạn chế xe qua cầu Mỹ Thuận một tháng để sửa chữa"
+      - "Cầu Mỹ Thuận"
+    truths:
+      - video_id: news-A
+        t_start_ms: 12000
+        t_end_ms: 18000
+
+  - query_id: qa003
+    kind: qa
+    question: "Bản tin nhắc đến kỷ niệm bao nhiêu năm giải phóng thủ đô?"
+    archetype: other
+    accepted_answers: ["70", "70 năm"]
+    truths:
+      - video_id: news-B
+        t_start_ms: 24000
+        t_end_ms: 27000

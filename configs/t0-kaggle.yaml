@@ -1,0 +1,466 @@
+# Kaggle pilot profile: 1-2 T4 GPUs, 3-10 videos, no external LLM/VLM API.
+# Use notebooks/kaggle_pilot.ipynb and docs/kaggle-pilot.md. This full profile
+# intentionally mirrors t0.yaml because config validation rejects unknown keys.
+
+project:
+  profile: t0
+  mode: offline
+
+paths:
+  # Kaggle input datasets are read-only. The notebook symlinks selected videos
+  # into this writable artifact tree without copying the video bytes.
+  data_root: /kaggle/working/data
+  # Keep downloaded model weights out of the artifact bundle persisted between
+  # sessions. They can be downloaded again when Internet is enabled.
+  models_dir: /kaggle/working/model-cache
+
+ingest:
+  video_extensions: [mp4, mkv, avi, mov, webm]
+  shots:
+    # Detectors: transnetv2 (CPU-capable T0 default) | omnishotcut (2026
+    # SBD SOTA, GPU-only, install per requirements-gpu.txt), e.g.:
+    #   model: omnishotcut
+    #   checkpoint: uva-cv-lab/OmniShotCut
+    #   mode: clean_shot   # or 'default' to keep gradual-transition shots
+    model: transnetv2
+    device: auto
+    threshold: 0.5
+    min_shot_duration_ms: 400
+  keyframes:
+    positions: [0.05, 0.35, 0.65, 0.95]
+    max_gap_ms: 10000
+    motion_min_diff: 12.0
+    motion_min_shot_ms: 4000
+    max_side: 720
+    jpeg_quality: 95
+  dedup:
+    phash_max_distance: 4
+    min_entropy_bits: 1.0
+
+embed:
+  # Encoders: siglip2 (open default) | pe_core (Meta Perception Encoder,
+  # stronger on video retrieval; install per requirements-gpu.txt), e.g.:
+  #   model: pe_core
+  #   model_id: PE-Core-L14-336
+  # Swapping requires re-running embed_corpus.py; the encoder-version guard
+  # refuses queries against indexes built with a different encoder.
+  model: siglip2
+  model_id: google/siglip2-so400m-patch16-384
+  device: auto
+  batch_size: 8
+  # Shard storage: safetensors (default, explicit dtype, safe load) | npy.
+  # store_dtype None keeps the encoder output (float32); set e.g. float16 to
+  # halve shard size (upcast to float32 on load). A dtype numpy can't store
+  # natively (bfloat16) requires shard_format: safetensors.
+  shard_format: safetensors
+  # Halves embedding-shard disk usage. The exact FAISS index still loads and
+  # persists a float32 copy, so inventory both directories before Save Version.
+  store_dtype: float16
+
+index:
+  backend: faiss
+  # Where FAISS search runs (Phase 10). auto uses the GPU only when the
+  # installed faiss build has GPU support (faiss-gpu-cu12 per
+  # requirements-gpu.txt) AND a CUDA device is visible; otherwise CPU.
+  # Run scripts/faiss_gpu_parity.py before a round that uses the GPU.
+  # requirements.txt installs faiss-cpu. CPU exact search is sufficient for the
+  # pilot and avoids replacing Kaggle's FAISS package during environment setup.
+  device: cpu
+  # float16 GPU residency halves index VRAM; measure the score drift with
+  # the parity script before enabling.
+  gpu_float16: false
+
+chronicle:
+  asr:
+    # Backends: faster_whisper (default) | qwen3_asr (Jan 2026, robust on
+    # speech-over-music; GPU env per requirements-gpu.txt), e.g.:
+    #   backend: qwen3_asr
+    #   model_id: Qwen/Qwen3-ASR-1.7B
+    #   aligner_id: Qwen/Qwen3-ForcedAligner-0.6B
+    # (gating fields below apply to faster_whisper only.)
+    backend: faster_whisper
+    # large-v3 on the GPU server; override to tiny/base for CPU pilots.
+    # Vietnamese-optimized alternative: vinai/PhoWhisper-large beats
+    # whisper-large-v3 on Vietnamese WER (arXiv 2406.02555). It is a
+    # standard Whisper architecture, so convert it with
+    # ct2-transformers-converter and point model_size at the converted
+    # directory - no code change. A/B both on the labelled fixture.
+    # Medium keeps the first Kaggle run within a practical download/runtime
+    # budget. Switch to large-v3 only after the smoke run succeeds.
+    model_size: medium
+    device: auto
+    compute_type: auto
+    # 'auto' (or null/omitted) detects the language per video; pin an ISO
+    # code (e.g. vi) when the corpus language is known - a fixed hint is
+    # faster and more stable.
+    language: auto
+    max_no_speech_prob: 0.6
+    min_avg_logprob: -1.0
+    # Anti-hallucination (faster_whisper only). Broadcast audio is full of
+    # music beds and jingles, on which whisper loops a plausible phrase at
+    # high confidence — the probability gates above do not catch it. VAD
+    # keeps non-speech away from the decoder entirely, and disabling
+    # previous-text conditioning stops a hallucinated line from propagating
+    # across windows. Further optional knobs (library defaults, unset here):
+    # hallucination_silence_threshold, no_repeat_ngram_size,
+    # repetition_penalty.
+    vad_filter: true
+    condition_on_previous_text: false
+    # Speaking-rate gate (note 15): music hallucinations decode at HIGH
+    # confidence, so only the chars-per-second rate betrays them (a real
+    # case: one 45 s span carrying a 70-character phrase). Normal
+    # Vietnamese speech runs well above 10 chars/s; 3.0 is conservative.
+    # Also honoured by the assembler, so re-running build_chronicle heals
+    # an existing corpus without re-transcribing.
+    min_chars_per_second: 3.0
+  ocr:
+    # Backends: easyocr (CPU default) | vlm (an OCR-capable VLM behind an
+    # OpenAI-compatible endpoint). The GPU-tier challenger is
+    # PaddleOCR-VL-1.6 (SOTA mid-2026, Vietnamese among 109 languages)
+    # served by vLLM, e.g.:
+    #   backend: vlm
+    #   base_url: http://localhost:8080/v1
+    #   model: PaddleOCR-VL-1.6-0.9B
+    #   temperature: 0.0      # deterministic reads; top_p/top_k also accepted
+    #   image_jpeg_quality: 95
+    #   # prompt defaults to "OCR:" (PaddleOCR-VL's element-level prompt);
+    #   # override it for general VLMs such as Qwen3-VL.
+    #   # Multi-endpoint: give a LIST of base_url to fan OCR out and fail
+    #   # over across several servers (one shared work queue):
+    #   #   base_url: [http://gpu0:8080/v1, http://gpu1:8080/v1]
+    #   #   model: PaddleOCR-VL-1.6-0.9B   # one model -> used on every endpoint
+    #   #   # or one model per endpoint: model: [paddleocr-vl, qwen3-vl]
+    #   #   num_parallel: 4      # concurrent requests PER endpoint
+    #   #   host_max_retries: 3  # evict an endpoint after N transport errors
+    #   #   batch_size: 128      # frames dispatched per round (resume/memory)
+    # See docs/note/10-model-sota-audit-2026-07.md before switching.
+    backend: easyocr
+    # EasyOCR has no language detection - Reader(lang_list) is mandatory
+    # (library constraint); the vlm backend ignores this field.
+    languages: [vi, en]
+    min_confidence: 0.4
+  caption:
+    # Off until an API key (or a local endpoint) is available; the Chronicle
+    # is legal without captions and upgrades in place when they arrive.
+    enabled: false
+    # Providers: gemini | openai | local. For 'local' point base_url at any
+    # self-deployed OpenAI-compatible server (vLLM/Ollama/TGI), e.g.
+    #   provider: local
+    #   base_url: http://localhost:8000/v1
+    #   model: Qwen/Qwen3-VL-8B-Instruct
+    # Multi-endpoint: a LIST of base_url fans captioning out across servers,
+    # kept busy by one shared queue and failing over if one dies:
+    #   base_url: [http://gpu0:8000/v1, http://gpu1:8000/v1]
+    #   model: Qwen/Qwen3-VL-8B-Instruct   # one model -> every endpoint
+    #   # or one model per endpoint: model: [qwen3-vl, gemma-3-vl]
+    #   num_parallel: 4       # concurrent requests PER endpoint
+    #   host_max_retries: 3   # evict an endpoint after N transport errors
+    #   batch_size: 64        # shots dispatched per round (resume/memory)
+    # (api_key_env is optional for local endpoints). Qwen3-VL-8B is the
+    # current open-weight sweet spot for this VRAM class; Qwen3.5-27B /
+    # Qwen3.6-27B are stronger multimodal options on larger GPUs (see
+    # docs/note/10-model-sota-audit-2026-07.md).
+    provider: gemini
+    # gemini-3.1-flash-lite: cheapest current-generation vision model
+    # ($0.25/$1.50 per 1M tokens, July 2026) - right for bulk shot
+    # captioning. Budget floor: gemini-2.5-flash-lite ($0.10/$0.40, can turn
+    # thinking fully off). Quality ceiling: gemini-3.5-flash ($1.50/$9.00).
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+    # Captioning is perception, not reasoning: keep thinking at the floor.
+    # Gemini >=3 cannot disable thinking ('off' clamps to level low);
+    # Gemini <3 maps off -> thinking_budget 0. For provider 'local',
+    # off/minimal send chat_template_kwargs {enable_thinking: false}
+    # (Qwen-style templates on vLLM); leave 'default' for servers that do
+    # not know that kwarg. Inline <think> blocks in replies are stripped.
+    thinking: "off"
+    # Sampling is optional; unset fields let the server decide. top_k is
+    # accepted by self-deployed servers only (provider 'local'), e.g.:
+    #   temperature: 0.2
+    #   top_p: 0.9
+    # The built-in caption prompt is genre-agnostic (any video) and emits
+    # English captions. Override it with a block scalar if you need a
+    # domain-specialised describer; an override must still demand the
+    # caption_en/actions/scene/confidence JSON the parser validates:
+    #   system_prompt: |
+    #     You describe keyframes from <your domain>. ... (same JSON fields) ...
+    frames_per_shot: 3
+    timeout_s: 60.0
+    max_output_tokens: 400
+    # JPEG quality of the frames embedded in each request.
+    image_jpeg_quality: 85
+  translate:
+    # Bilingual chronicle (note 15): enabling this translates caption_en ->
+    # caption_vi offline at assembly, so the semantic channel indexes both
+    # languages and a raw Vietnamese query (dispatch.raw_query_weight)
+    # matches without the VI->EN translation hop. The native alternative is
+    # caption.request_caption_vi: true (the VLM writes Vietnamese itself,
+    # costs output tokens per shot); native wins per shot, translation
+    # fills the gaps — the two compose.
+    enabled: false
+    model_id: facebook/nllb-200-distilled-600M
+    device: auto
+    # NLLB has no language detection: the tokenizer needs the source token
+    # and generation forces the target token (architecture constraint).
+    src_lang: eng_Latn
+    tgt_lang: vie_Latn
+    batch_size: 8
+    max_new_tokens: 256
+  # Persistent-overlay OCR split (note 15): an identical OCR line found in
+  # at least this fraction of a video's shots (watermarks, tickers, program
+  # bugs) moves out of shot evidence into a per-video overlay document —
+  # noise at shot granularity, but a strong video identifier used by the
+  # retrieval video prior. Comment out to keep every line as shot evidence.
+  overlay_min_recurrence: 0.3
+  # Answer Ledger (VQA phase 1): a fourth Chronicle pass that fills
+  # ChronicleRecord.entities via a language-general NER stage and builds a
+  # per-shot factoid ledger for the VQA Track A lookup. OFF here keeps the KIS
+  # pipeline bit-identical. To enable, uncomment and also set vqa.enabled:
+  #   ledger:
+  #     enabled: true
+  #     fields: [screen_text, spoken_entities]
+  #     entity_backend: auto        # auto = llm if ledger.llm.enabled else gliner
+  #     gliner:                     # local, multilingual, zero-shot, CPU
+  #       model_id: urchade/gliner_multi-v2.1
+  #       device: auto
+  #       label_map: {persons: [person], orgs: [organization], places: [location]}
+  #       threshold: 0.5
+  #     llm:                        # optional NER via endpoint (higher accuracy)
+  #       enabled: false
+  #       provider: local
+  #       base_url: ${LOCAL_LLM_BASE_URL}
+  #       model: ${LOCAL_LLM_MODEL}
+
+# VQA / Q&A path (note 18). OFF keeps the service KIS-only (no /api/qa route).
+# Enable together with chronicle.ledger above, then run build_chronicle.py and
+# build_text_indexes.py to produce the factoid index:
+#   vqa:
+#     enabled: true
+#     archetypes: [count, read_text, entity, attribute, cumulative, other]
+#     top_m: 8
+#     # Track B (phase 2): a per-candidate VLM read voted across moments. OFF
+#     # (reader.enabled: false) leaves /api/qa Track A only. The reader takes
+#     # the SAME OpenAI-compatible endpoint shape as escalations.vlm_verify;
+#     # point it at a local VLM (env-injected, never hardcode a URL/key). Its
+#     # timeout_s MUST be <= vqa.timeout_s (an abandoned read must not outlive
+#     # the wall). base_url/model may be a list for a multi-endpoint fan-out.
+#     reader:
+#       enabled: true
+#       provider: local
+#       base_url: ${LOCAL_VLM_BASE_URL}
+#       model: ${LOCAL_VLM_MODEL}
+#       frames_per_candidate: 4     # ~300-1.2k projector tokens each (X1)
+#       timeout_s: 30.0
+#     vote_min_agree: 2             # cross-moment agreement for a confident win
+#     disconfirm: true              # one negative-check call guards the winner
+#     track_a_bonus: 0.5            # cross-track agreement bonus (0 disables)
+#     timeout_s: 30.0               # wall for the whole Track B read stage
+
+textstack:
+  # The top-level embedder must produce learned-sparse weights (bge_m3);
+  # it serves the literal channel and, by default, the semantic one too.
+  model: bge_m3
+  model_id: BAAI/bge-m3
+  device: auto
+  batch_size: 16
+  # Optional dense-channel override (the dense-embedder ablation switch):
+  #   dense:
+  #     model: qwen3_embedding
+  #     model_id: Qwen/Qwen3-Embedding-0.6B
+  #     device: auto
+  #     batch_size: 16
+  # Re-run build_text_indexes.py after changing this.
+
+retrieval:
+  # KIS-V example clips: frames sampled/averaged into one query vector and
+  # the decode size (match keyframes.max_side for comparable inputs).
+  query_clip:
+    frames: 4
+    decode_width: 720
+    decode_height: 405
+  fusion:
+    rrf_k: 60
+    top_k_per_channel: 200
+    # Removing a channel here disables it: that is the ablation switch.
+    channel_weights:
+      dense_visual: 1.0
+      semantic_dense: 1.0
+      literal_sparse: 1.0
+  # Temporal window fusion (note 15): candidates of one video within
+  # window_ms of each other score as a window (each sub-query's best
+  # contribution inside it), so fragments of a compound query reinforce
+  # the same region instead of competing. window_ms: 0 restores plain
+  # per-shot RRF exactly (the ablation switch). agreement_bonus rewards
+  # windows hit by several distinct channels (triangulated evidence);
+  # video_prior_weight adds the overlay-text video prior (needs
+  # chronicle.overlay_min_recurrence + a rebuilt text index).
+  # order_bonus multiplies a window whose sentence chunks (visual_chunking
+  # below) match in the query's sentence order — sentence order usually
+  # mirrors event order. Inert unless visual_chunking actually splits a
+  # query.
+  temporal:
+    window_ms: 10000
+    agreement_bonus: 0.25
+    video_prior_weight: 0.5
+    order_bonus: 0.0
+  # Sentence chunking for the dense visual channel (note 15): SigLIP reads
+  # 64 tokens and mostly the FIRST sentence of a multi-sentence query, so
+  # each sentence becomes its own sub-query and rejoins RRF/window fusion.
+  # Off here (annotated reference keeps the previous behaviour bit-exact);
+  # the T4 accuracy profiles enable it. chunk_weight scales each chunk's
+  # RRF weight relative to the unsplit query.
+  visual_chunking:
+    enabled: false
+    max_chunks: 6
+    chunk_weight: 1.0
+  # Automatic VLM listwise rerank of the fused top (note 15): reuses the
+  # escalations.vlm_verify endpoint/prompt/top_n, so enabling it requires
+  # vlm_verify.enabled. Off in this profile (no endpoint configured);
+  # the T4 profiles enable it. Budget its latency against the round timer.
+  auto_rerank:
+    enabled: false
+    timeout_s: 20.0
+
+cortex:
+  # Query compilation (Phase 6). Provider-agnostic like chronicle.caption:
+  # gemini (default) | openai | local (self-deployed OpenAI-compatible
+  # server via base_url). enabled: false - or any LLM failure - falls back
+  # to the raw query as one visual phrase (never dumber than baseline).
+  # base_url may be a LIST for load-balancing + failover across endpoints
+  # (one query is one request, so num_parallel does not apply here);
+  # host_max_retries evicts a dead endpoint.
+  # Raw-query fallback keeps baseline retrieval operational without an API key.
+  enabled: false
+  provider: gemini
+  model: gemini-3.1-flash-lite
+  api_key_env: GEMINI_API_KEY
+  paraphrases: 0
+  # The built-in compile prompt is deliberately genre- and language-agnostic
+  # (works for any video, any language). To specialise it - e.g. Vietnamese
+  # broadcast news for the competition - set system_prompt to a block scalar.
+  # An override MUST keep the QuerySpec JSON contract (visual_phrases,
+  # entity_terms, ocr_literals, asr_phrases, temporal_hints, negations,
+  # paraphrases, confidence). A ready news override is in docs/note/14. Example:
+  #   system_prompt: |
+  #     You compile queries for a Vietnamese broadcast-news retrieval system.
+  #     ... (must still emit the QuerySpec JSON fields) ...
+  # Per-field dispatch weights (multiplied with the channel weights below);
+  # negations are applied as evidence filters, never embedded.
+  dispatch:
+    visual_weight: 1.0
+    entity_weight: 0.8
+    ocr_literal_weight: 1.5
+    asr_weight: 1.0
+    paraphrase_weight: 0.5
+    negation_filter: true
+    # The RAW Vietnamese query joins the race against the multilingual
+    # text channels (BGE-M3) at this weight, so caption_vi / ASR / OCR
+    # match without the VI->EN translation hop (note 15). 0 disables.
+    raw_query_weight: 0.5
+
+escalations:
+  # Operator-triggered tools (Phase 7): each enabled escalation is a
+  # console button + hotkey; nothing fires automatically. On a single GPU
+  # the LRU cache below bounds co-resident heavy models; on multi-GPU pin
+  # each tool's device instead.
+  max_resident_models: 1
+  rerank:
+    # Keep the pilot service lean; enable after core retrieval is verified.
+    enabled: false
+    pool_size: 200
+    timeout_s: 20.0
+  imagine:
+    # SDXL-Turbo renders of the spec + image->image search. Multi-GB
+    # download, wants a GPU: enable on the server profile.
+    enabled: false
+    model_id: stabilityai/sdxl-turbo
+    device: auto
+    num_images: 3
+    # Model-card recipe: 1 step, guidance 0.0 (trained without CFG), 512px.
+    num_inference_steps: 1
+    guidance_scale: 0.0
+    width: 512
+    height: 512
+    min_clip_score: 0.2
+    fusion_weight: 1.0
+    timeout_s: 60.0
+  vlm_verify:
+    # Listwise re-order of the top bundles by a VLM. Needs an API key (or
+    # a local endpoint); enable per profile.
+    enabled: false
+    provider: gemini
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+    top_n: 20
+    frames_per_candidate: 1
+    timeout_s: 60.0
+    max_output_tokens: 800
+
+qpp:
+  # Query Performance Prediction, the "should I trust this ranking?" hint
+  # (Phase 7): a tiny logistic model trained on labelled fixture outcomes
+  # by scripts/train_qpp.py predicts whether the target is likely inside
+  # the operator's top-k; below hint_threshold the console shows a
+  # "consider escalating" hint. Advisory only - it never fires anything.
+  # trained_artifact points at the JSON file train_qpp.py writes (it is
+  # NOT a neural checkpoint); null disables the advisor.
+  trained_artifact: null
+  hint_threshold: 0.5
+
+service:
+  host: 127.0.0.1
+  port: 8000
+  # A small result page limits JPEG requests over the temporary tunnel.
+  default_top_k: 20
+  streaming: false
+  # KIS-C reveals never grow the candidate set (see config.py for the
+  # empty-intersection escape hatch).
+  monotone_narrowing: true
+  # Provisional until the official 2026 format is published; the format
+  # lives in src/aic/service/submission.py only.
+  submission_format: json
+  # Rocchio relevance feedback (classic SMART weights; tune on the fixture).
+  feedback:
+    alpha: 1.0
+    beta: 0.75
+    gamma: 0.25
+
+eval:
+  k_values: [1, 5, 10, 100]
+  hit_tolerance_ms: 2000
+  miss_penalty_rank: 200
+  per_rank_cost_s: 1.5
+
+verify:
+  # Off by default. Set true to make the ingest / embed / chronicle scripts
+  # check artifact integrity before resuming: they decode every keyframe image
+  # and load every embedding shard, delete any that are missing or corrupt
+  # along with their manifest rows (cascading the drop to downstream stages),
+  # so the resume redoes exactly the broken items. The decode check reads every
+  # file once, so enable it after an interrupted run, not on every resume.
+  on_resume: false
+
+fixture_gen:
+  # Synthetic fixture generation (scripts/generate_fixture.py, note 15): a
+  # VLM writes one AIC-style Vietnamese KIS query per randomly sampled
+  # window (exact labels by construction). The model sees ONLY keyframes —
+  # never corpus captions — so queries cannot leak one channel's
+  # vocabulary. Keep the hand-labelled fixture as a holdout.
+  provider: gemini
+  model: gemini-3.1-flash-lite
+  api_key_env: GEMINI_API_KEY
+  count: 100
+  # Match the hand-labelled fixture's window length.
+  window_ms: 10000
+  frames_per_case: 4
+  seed: 0
+  timeout_s: 120.0
+  max_output_tokens: 500
+  # VQA measurement (phase 3): the fraction of sampled windows generated as
+  # `kind: qa` cases (question + accepted answers + archetype) instead of KIS
+  # queries. 0 keeps the KIS-only behaviour above. A qa window asks the VLM to
+  # ground its question in the frames alone and to self-assert the answer is
+  # visible (unanswerable cases are discarded). Archetypes are stratified over
+  # qa_archetypes so the set is not all read_text.
+  qa_fraction: 0.0
+  # qa_archetypes: [count, read_text, entity, attribute, cumulative, other]

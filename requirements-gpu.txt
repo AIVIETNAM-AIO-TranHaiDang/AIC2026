@@ -1,0 +1,54 @@
+# GPU-server-only dependencies for the optional SOTA backends.
+#
+# These are NOT installed into the development venv because their dependency
+# trees conflict with requirements.txt pins (details per section). Install
+# them on the GPU server (Colab or rented box) where the corresponding
+# backend is enabled in the profile config. Everything else about the
+# pipeline (code, tests, configs) works without them; each backend fails
+# with a pointed error message if selected while its package is missing.
+# All pins were verified against the upstream sources in July 2026
+# (docs/note/10-model-sota-audit-2026-07.md).
+
+# ASR backend 'qwen3_asr' (chronicle.asr.backend).
+# Pins transformers==4.57.6 (same as this project) but its librosa->numba
+# chain downgrades numpy below our 2.5.1 pin, hence GPU-env only.
+# qwen-asr==0.0.6
+
+# Shot detector 'omnishotcut' (ingest.shots.model). MIT license.
+# Hard-pins transformers==4.57.3 (vs our 4.57.6) and pulls decord/gradio,
+# hence GPU-env only. Commit pinned to the state the adapter was verified
+# against.
+# git+https://github.com/UVA-Computer-Vision-Lab/OmniShotCut.git@3331cd3163f7f17cd6d7c8fc12ffde22894ace01
+
+# Image-text encoder 'pe_core' (embed.model). Weights are Apache-2.0; the
+# reference code is FAIR Noncommercial Research License (fine for this
+# research competition - see note 10). The repo's requirements pin
+# numpy==2.1.2 / pillow==11.0.0, so install it WITHOUT its pinned deps and
+# add the four small runtime imports the vision_encoder path actually uses
+# (verified from source):
+#   pip install --no-deps git+https://github.com/facebookresearch/perception_models.git@3e352cca660658d4b5c90f42a7808b11469e4c66
+#   pip install einops ftfy regex timm
+
+# GPU vector search (index.device: auto/cuda, Phase 10). Official FAISS
+# GPU builds ship via conda only; this is the unofficial CUDA-12 wheel
+# (github.com/kyamagu/faiss-wheels successor packaging, CC 7.0-8.9 covers
+# the T4 at 7.5). It CONFLICTS with faiss-cpu from requirements.txt - both
+# install the `faiss` module - so on the GPU server uninstall faiss-cpu
+# first:
+#   pip uninstall -y faiss-cpu && pip install faiss-gpu-cu12==1.14.1.post1
+# Run scripts/faiss_gpu_parity.py before trusting it in a round.
+# faiss-gpu-cu12==1.14.1.post1
+
+# VQA detector-counter (phase 4): the SAM 3 family for counting + the zoom
+# crop, via the transformers Sam3Model/Sam3Processor integration (verified
+# API). SAM 3 landed in transformers v5.x, which CONFLICTS with the dev pin
+# (transformers==4.57.3, shared with several stages), so it is GPU-server only.
+# The facebook/sam3.1 (and sam3) checkpoints are HF-GATED: request access on the
+# model page once, then supply the token via paths.hf_token / paths.hf_token_env
+# (never a literal in a committed YAML). Enable ledger.counter to use it.
+#   pip install -U "transformers>=5.14.0"
+# (re-create the venv, cell 3, before returning to the pinned transformers.)
+
+# Usage: uncomment the lines for the backends you enable, then
+#   pip install -r requirements-gpu.txt
+# in the GPU environment (never in the dev venv).

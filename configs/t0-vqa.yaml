@@ -1,0 +1,271 @@
+# Tier 0 profile with the VQA path ON — the committed source for data/vqa-on.yaml.
+#
+# This is configs/t0.yaml (the CPU/T4 local profile that the data/ corpus was
+# built with) with exactly two things flipped on: the offline Answer Ledger
+# (chronicle.ledger) and the online Q&A route (vqa). EVERY non-VQA section is
+# kept bit-identical to t0.yaml so the KIS ledger/indexes stay compatible with
+# the artifacts already in data/manifests. Use it to build + evaluate VQA
+# without hand-editing t0.yaml:
+#
+#   scripts/run_vqa_eval.py --config configs/t0-vqa.yaml \
+#       --fixture data/fixture.qa.yaml
+#
+# Track A (ledger lookup) is on out of the box and loads with no endpoint.
+# Track B (the per-candidate VLM reader) and the detector-counter are OFF by
+# default so this file loads cleanly; enable them on the GPU server per the
+# blocks below (they need a VLM endpoint / a gated SAM download). See
+# docs/note/19-vqa-server-runbook.md.
+
+project:
+  profile: t0
+  mode: offline
+
+paths:
+  data_root: data
+  # For the gated SAM 3.1 counter weights (only when the counter block is on):
+  #   hf_token_env: HF_TOKEN
+
+ingest:
+  video_extensions: [mp4, mkv, avi, mov, webm]
+  shots:
+    model: transnetv2
+    device: auto
+    threshold: 0.5
+    min_shot_duration_ms: 400
+  keyframes:
+    positions: [0.05, 0.35, 0.65, 0.95]
+    max_gap_ms: 10000
+    motion_min_diff: 12.0
+    motion_min_shot_ms: 4000
+    max_side: 720
+    jpeg_quality: 95
+  dedup:
+    phash_max_distance: 4
+    min_entropy_bits: 1.0
+
+embed:
+  model: siglip2
+  model_id: google/siglip2-so400m-patch16-384
+  device: auto
+  batch_size: 8
+  shard_format: safetensors
+  store_dtype: null
+
+index:
+  backend: faiss
+  device: auto
+  gpu_float16: false
+
+chronicle:
+  asr:
+    backend: faster_whisper
+    model_size: large-v3
+    device: auto
+    compute_type: auto
+    language: auto
+    max_no_speech_prob: 0.6
+    min_avg_logprob: -1.0
+    vad_filter: true
+    condition_on_previous_text: false
+    min_chars_per_second: 3.0
+  ocr:
+    backend: easyocr
+    languages: [vi, en]
+    min_confidence: 0.4
+  caption:
+    enabled: false
+    provider: gemini
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+    thinking: "off"
+    frames_per_shot: 3
+    timeout_s: 60.0
+    max_output_tokens: 400
+    image_jpeg_quality: 85
+  translate:
+    enabled: false
+    model_id: facebook/nllb-200-distilled-600M
+    device: auto
+    src_lang: eng_Latn
+    tgt_lang: vie_Latn
+    batch_size: 8
+    max_new_tokens: 256
+  overlay_min_recurrence: 0.3
+  # Answer Ledger (VQA phase 1) — ON. A language-general NER stage fills
+  # ChronicleRecord.entities, then build_ledger derives the per-shot factoid
+  # ledger + its sparse index. entity_backend 'auto' uses the local GLiNER
+  # model (CPU, multilingual, ~1 GB) since no ledger.llm endpoint is wired.
+  ledger:
+    enabled: true
+    fields: [screen_text, spoken_entities]
+    entity_backend: auto
+    gliner:
+      model_id: urchade/gliner_multi-v2.1
+      device: auto
+      label_map: {persons: [person], orgs: [organization], places: [location]}
+      threshold: 0.5
+    llm:
+      enabled: false
+    # Detector-counter (phase 4) — OFF (needs a GPU + HF-gated SAM 3.1 and
+    # transformers>=5 from requirements-gpu). To fill people_count /
+    # salient_objects and power the count program, add those to ledger.fields
+    # above, set paths.hf_token_env, and uncomment:
+    #   counter:
+    #     enabled: true
+    #     backend: sam3.1
+    #     concepts: [person, car, motorbike, flag, boat]
+    #     max_batch: 4
+
+textstack:
+  model: bge_m3
+  model_id: BAAI/bge-m3
+  device: auto
+  batch_size: 16
+
+retrieval:
+  query_clip:
+    frames: 4
+    decode_width: 720
+    decode_height: 405
+  fusion:
+    rrf_k: 60
+    top_k_per_channel: 200
+    channel_weights:
+      dense_visual: 1.0
+      semantic_dense: 1.0
+      literal_sparse: 1.0
+  temporal:
+    window_ms: 10000
+    agreement_bonus: 0.25
+    video_prior_weight: 0.5
+    order_bonus: 0.0
+  visual_chunking:
+    enabled: false
+    max_chunks: 6
+    chunk_weight: 1.0
+  auto_rerank:
+    enabled: false
+    timeout_s: 20.0
+
+cortex:
+  enabled: true
+  provider: gemini
+  model: gemini-3.1-flash-lite
+  api_key_env: GEMINI_API_KEY
+  paraphrases: 2
+  dispatch:
+    visual_weight: 1.0
+    entity_weight: 0.8
+    ocr_literal_weight: 1.5
+    asr_weight: 1.0
+    paraphrase_weight: 0.5
+    negation_filter: true
+    raw_query_weight: 0.5
+
+escalations:
+  max_resident_models: 1
+  rerank:
+    enabled: true
+    pool_size: 200
+    timeout_s: 20.0
+  imagine:
+    enabled: false
+    model_id: stabilityai/sdxl-turbo
+    device: auto
+    num_images: 3
+    num_inference_steps: 1
+    guidance_scale: 0.0
+    width: 512
+    height: 512
+    min_clip_score: 0.2
+    fusion_weight: 1.0
+    timeout_s: 60.0
+  vlm_verify:
+    enabled: false
+    provider: gemini
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+    top_n: 20
+    frames_per_candidate: 1
+    timeout_s: 60.0
+    max_output_tokens: 800
+
+qpp:
+  trained_artifact: null
+  hint_threshold: 0.5
+
+service:
+  host: 127.0.0.1
+  port: 8000
+  default_top_k: 100
+  monotone_narrowing: true
+  submission_format: json
+  # NDJSON streaming twins of /api/search and /api/qa (note 18 §3.8): additive,
+  # console auto-detects and falls back when off. On for the operator UX.
+  streaming: true
+  feedback:
+    alpha: 1.0
+    beta: 0.75
+    gamma: 0.25
+
+# VQA / Q&A path (note 18) — ON. Track A (ledger lookup) works with no endpoint.
+# The factoid channel probes the Answer Ledger index at factoid_weight (QA only;
+# KIS ranking is untouched). Track B + reverse + EV hint are opt-in below.
+vqa:
+  enabled: true
+  archetypes: [count, read_text, entity, attribute, cumulative, other]
+  top_m: 8
+  factoid_weight: 1.0
+  # Track B (phase 2) — OFF so this file loads without an endpoint. On the GPU
+  # server, point it at a VLM (env-injected, never hardcode a URL/key) and set
+  # reader.enabled: true; reader.timeout_s MUST be <= vqa.timeout_s. Example:
+  #   reader:
+  #     enabled: true
+  #     provider: local
+  #     base_url: ${LOCAL_VLM_BASE_URL}
+  #     model: ${LOCAL_VLM_MODEL}
+  #     frames_per_candidate: 4
+  #     timeout_s: 60.0
+  reader:
+    enabled: false
+    provider: local
+    frames_per_candidate: 4
+    timeout_s: 60.0
+  zoom_window_ms: 10000
+  vote_min_agree: 2
+  disconfirm: true
+  track_a_bonus: 0.5
+  timeout_s: 60.0
+  count:
+    min_mask_confidence: 0.5
+    adjudicate_margin: 1
+    crop_pad_frac: 0.15
+  # Reverse retrieval + EV hint (phase 5) — OFF until their phase-3 ablations
+  # justify the trigger thresholds. To try them on the server:
+  #   reverse: {enabled: true, trigger_ratio: 1.3, gate_top_m: 8, max_hypotheses: 5}
+  #   ev_hint: {enabled: true, min_agreeing_for_submit: 2}
+
+eval:
+  k_values: [1, 5, 10, 100]
+  hit_tolerance_ms: 2000
+  miss_penalty_rank: 200
+  per_rank_cost_s: 1.5
+
+verify:
+  on_resume: false
+
+fixture_gen:
+  provider: gemini
+  model: gemini-3.1-flash-lite
+  api_key_env: GEMINI_API_KEY
+  count: 100
+  window_ms: 10000
+  frames_per_case: 4
+  seed: 0
+  timeout_s: 120.0
+  max_output_tokens: 500
+  # Generate kind:qa cases too (phase-3 QA harness); 0 keeps KIS-only. Raise it
+  # on the GPU server (a VLM sees the frames) to add count/attribute cases the
+  # text-only hand fixture cannot ground.
+  qa_fraction: 0.0
+  qa_archetypes: [count, read_text, entity, attribute, cumulative, other]

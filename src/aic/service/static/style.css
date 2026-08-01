@@ -1,0 +1,177 @@
+/* Operator console: dark, dense, keyboard-first. */
+
+:root {
+  --bg: #14161a;
+  --panel: #1d2026;
+  --text: #e6e6e6;
+  --muted: #9aa0a8;
+  --accent: #4da3ff;
+  --positive: #3fb96b;
+  --negative: #e05a5a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, sans-serif;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  grid-template-columns: 1fr 260px;
+  grid-template-areas:
+    "header header"
+    "status status"
+    "results constraints"
+    "help help";
+  height: 100vh;
+}
+
+header {
+  grid-area: header;
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  align-items: center;
+}
+
+#search-form { display: flex; flex: 1; gap: 8px; }
+
+#query, #reveal-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+
+#statusbar {
+  grid-area: status;
+  padding: 6px 14px;
+  color: var(--muted);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+#statusbar #status { flex: 1; }
+
+#planner { color: var(--accent); }
+
+#advisor { color: var(--positive); }
+#advisor.warn { color: var(--negative); }
+
+#escalations { display: flex; gap: 6px; }
+#escalations button { padding: 3px 10px; font-size: 12px; }
+
+main#results {
+  grid-area: results;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  align-content: start;
+  outline: none;
+}
+
+aside#constraints {
+  grid-area: constraints;
+  background: var(--panel);
+  padding: 12px;
+  overflow-y: auto;
+}
+aside#constraints h2 { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+#constraint-list { margin: 0; padding-left: 20px; }
+#constraint-list li { margin-bottom: 6px; }
+
+.card {
+  background: var(--panel);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.card.selected { border-color: var(--accent); }
+.card .rank { color: var(--muted); font-size: 12px; }
+.card .strip { display: flex; gap: 4px; overflow-x: auto; }
+.card .strip img { height: 72px; border-radius: 4px; }
+.card .caption { min-height: 2.6em; }
+.card .snippet { color: var(--muted); font-size: 12px; white-space: pre-line; }
+.card .meta { color: var(--muted); font-size: 12px; }
+.card .timeline {
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  position: relative;
+}
+.card .timeline .pos {
+  position: absolute;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.card.fed-positive { border-color: var(--positive); }
+.card.fed-negative { border-color: var(--negative); opacity: 0.6; }
+
+footer#help {
+  grid-area: help;
+  padding: 6px 14px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+kbd {
+  background: #2a2e35;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: inherit;
+}
+
+dialog#submit-dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  max-width: 480px;
+}
+dialog#submit-dialog pre {
+  background: var(--bg);
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+/* VQA Track B voted-answer groups: the active (selected) group is highlighted,
+   and clicking a group fills the submit dialog with its top moment. */
+#qa-groups li {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+#qa-groups li.qa-group-active {
+  background: var(--accent, #2d4a6b);
+}
+/* vote_min_agree moments agreed on this answer: safe to submit early. */
+.qa-confident {
+  color: var(--ok, #6fbf73);
+  font-style: normal;
+  font-weight: 600;
+}

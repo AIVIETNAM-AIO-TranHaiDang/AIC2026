@@ -1,0 +1,9 @@
+# Development and test dependencies for AIC2026_prepare.
+# Install into the project virtualenv only:  pip install -r requirements-dev.txt
+#
+# These back the mandatory workflow in CLAUDE.md: every task ships with tests
+# (pytest) and must meet the code-quality bar expected by external reviewers (ruff).
+# Version floors are conservative and get tightened as the environment stabilises.
+
+pytest>=8.0
+ruff>=0.6

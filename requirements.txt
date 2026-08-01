@@ -1,0 +1,44 @@
+# Runtime dependencies for AIC2026_prepare.
+#
+# Install into the project virtualenv only (see README.md); never into the
+# system Python. Versions are pinned to what the code was verified against.
+
+# Ingestion (Phase 2)
+av==18.0.0
+ImageHash==4.3.2
+numpy==2.5.1
+Pillow==12.3.0
+pydantic==2.13.4
+PyYAML==6.0.3
+torch==2.13.0
+tqdm==4.68.4
+transnetv2-pytorch==1.0.5
+
+# Perceptual substrate + text stack (Phases 3 and 5)
+faiss-cpu==1.14.3
+FlagEmbedding==1.4.0
+safetensors==0.8.0  # embedding shard storage (embed.shard_format)
+transformers==4.57.6
+
+# Chronicle (Phase 4)
+easyocr==1.7.2
+faster-whisper==1.2.1
+httpx==0.28.1
+
+# Answer Ledger NER (VQA phase 1). GLiNER is the local, multilingual,
+# zero-shot spoken-entity backend (chronicle.ledger.entity_backend: gliner);
+# it is import-guarded, so a box that only uses the llm backend need not load
+# it. Weights (urchade/gliner_multi-v2.1) download into paths.models_dir.
+gliner==0.2.27
+
+# Service layer + operator UI (Phases 6 and 8)
+fastapi==0.139.0
+uvicorn==0.51.0
+
+# Escalation toolbox + QPP advisor (Phase 7)
+# diffusers powers the Imagine->Match escalation (SDXL-Turbo); it is small
+# and conflict-free, the model weights download only when the escalation is
+# enabled. scikit-learn is used by scripts/train_qpp.py only; the service
+# reads the trained JSON artifact without it.
+diffusers==0.39.0
+scikit-learn==1.9.0
