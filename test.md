@@ -756,3 +756,72 @@ data/pilot/manifests/chronicle.jsonl   # 51 shot, 50 shot có asr_text
 video khớp manifest ingest. Shot không có ASR không phải lỗi: nó có thể nằm ở
 đoạn không có lời nói. Model `small` đã chứng minh pipeline hoạt động nhưng vẫn
 nghe nhầm một số từ tiếng Việt; tối ưu chất lượng model là bước đánh giá riêng.
+
+## 16. Chạy OCR cho 147 keyframe
+
+### 16.1 Source quy định gì?
+
+Profile `configs/t0-gtx1650.yaml` đang dùng:
+
+```yaml
+chronicle:
+  ocr:
+    backend: easyocr
+    languages: [vi, en]
+    min_confidence: 0.4
+```
+
+Do đó source dùng EasyOCR để đọc chữ tiếng Việt và tiếng Anh trên từng
+keyframe. Những dòng có confidence thấp hơn `0.4` không được ghi vào manifest.
+
+### 16.2 Lệnh tui đã chạy
+
+```bash
+/usr/bin/time -v .venv/bin/python scripts/build_chronicle.py \
+  --config configs/t0-gtx1650.yaml \
+  --num-gpus 1 \
+  --skip-asr \
+  --skip-entities
+```
+
+Ý nghĩa:
+
+- `--skip-asr`: giữ kết quả ASR đã có, không chép lại audio.
+- Không có `--skip-ocr`, nên stage OCR được chạy.
+- `--skip-entities`: chưa chạy trích xuất entity.
+- Caption đang `enabled: false` trong config nên không gọi API.
+- `/usr/bin/time -v` chỉ đo thời gian/RAM, không thay đổi thuật toán source.
+
+Lần đầu EasyOCR tự tải model detection và recognition, sau đó cache lại để
+những lần sau không phải tải lại.
+
+### 16.3 Kết quả do source tạo
+
+```text
+ocr: processed=147 skipped=0 failed=0
+chronicle: 51 shots assembled
+Elapsed (wall clock) time: 0:39.65
+Maximum resident set size: 1683048 kbytes
+Exit status: 0
+```
+
+Hai artifact được tạo/cập nhật:
+
+```text
+data/pilot/manifests/ocr.jsonl         # OCR theo từng keyframe
+data/pilot/manifests/chronicle.jsonl   # OCR được gom vào từng shot
+```
+
+`[KIỂM TRA BỔ SUNG]` Tui đọc lại JSONL và xác nhận:
+
+```text
+ocr_records=147
+keyframes_with_ocr=56
+detected_text_lines=267
+shots_with_ocr=29/51
+confidence_range=0.4028..0.9999
+OCR_OUTPUT_VALID
+```
+
+Các số đếm và assertion trên là kiểm tra bổ sung của tui; việc nhận dạng,
+lọc confidence, ghi `ocr.jsonl` và ghép `chronicle.jsonl` là hành vi của source.
