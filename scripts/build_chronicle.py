@@ -68,6 +68,19 @@ def main() -> int:
     setup_logging(args.log_level)
     cfg = load_config(args.config)
     apply_model_cache_env(cfg.paths.models_dir)
+
+    if not args.skip_asr and cfg.chronicle.asr.backend == "faster_whisper":
+        from aic.cuda_runtime import (
+            CudaRuntimeError,
+            ensure_faster_whisper_cuda12_runtime,
+        )
+
+        try:
+            ensure_faster_whisper_cuda12_runtime(cfg.chronicle.asr.device)
+        except CudaRuntimeError as exc:
+            print(f"ASR runtime error: {exc}", file=sys.stderr)
+            return 2
+
     maybe_repair(cfg)
 
     from aic.chronicle.caption import OpenAICompatCaptioner
@@ -79,6 +92,7 @@ def main() -> int:
     from aic.chronicle.translate import build_translator
 
     models_dir = cfg.paths.models_dir
+    stage_failures = 0
     if args.redo_asr or args.redo_asr_videos:
         video_ids = None
         if args.redo_asr_videos:
@@ -93,6 +107,7 @@ def main() -> int:
             f"asr: processed={stats.get('processed', 0)} "
             f"skipped={stats.get('skipped', 0)} failed={stats.get('failed', 0)}"
         )
+        stage_failures += stats.get("failed", 0)
     if not args.skip_ocr:
         # Only the torch backend (easyocr) is GPU-parallel; the vlm backend is
         # an OpenAI-compatible endpoint and stays single-process here. The
@@ -112,6 +127,7 @@ def main() -> int:
             f"ocr: processed={stats.get('processed', 0)} "
             f"skipped={stats.get('skipped', 0)} failed={stats.get('failed', 0)}"
         )
+        stage_failures += stats.get("failed", 0)
     if cfg.chronicle.caption.enabled:
         captioner = OpenAICompatCaptioner(cfg.chronicle.caption)
         try:
@@ -122,6 +138,7 @@ def main() -> int:
             f"captions: processed={stats.processed} skipped={stats.skipped} "
             f"failed={stats.failed}"
         )
+        stage_failures += stats.failed
 
     translator = None
     if cfg.chronicle.translate.enabled:
@@ -155,6 +172,7 @@ def main() -> int:
             f"entities: processed={stats.get('processed', 0)} "
             f"skipped={stats.get('skipped', 0)} failed={stats.get('failed', 0)}"
         )
+        stage_failures += stats.get("failed", 0)
         # Re-assemble so ChronicleRecord.entities is persisted in chronicle.jsonl.
         stats = assemble_chronicle(cfg, translator)
         print(f"chronicle: re-assembled {stats.processed} shots with entities")
@@ -177,6 +195,7 @@ def main() -> int:
             f"ledger-count: processed={stats.get('processed', 0)} "
             f"skipped={stats.get('skipped', 0)} failed={stats.get('failed', 0)}"
         )
+        stage_failures += stats.get("failed", 0)
 
     if ledger.enabled:
         # Derive the per-shot factoid ledger from the assembled chronicle
@@ -186,7 +205,7 @@ def main() -> int:
 
         rows = build_ledger(cfg)
         print(f"ledger: {rows} rows written")
-    return 0
+    return 1 if stage_failures else 0
 
 
 if __name__ == "__main__":

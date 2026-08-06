@@ -9,6 +9,15 @@
 # All pins were verified against the upstream sources in July 2026
 # (docs/note/10-model-sota-audit-2026-07.md).
 
+# Faster-Whisper GPU runtime. PyTorch 2.13 brings CUDA 13 libraries, while the
+# CTranslate2 4.8 Linux wheel used by faster-whisper==1.2.1 dynamically loads
+# the CUDA 12 cuBLAS and cuDNN 9 sonames. These packages coexist with PyTorch's
+# CUDA 13 runtime; scripts/build_chronicle.py exposes their library directories
+# only to the process that runs Faster-Whisper.
+nvidia-cuda-nvrtc-cu12==12.9.86
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.24.0.43
+
 # ASR backend 'qwen3_asr' (chronicle.asr.backend).
 # Pins transformers==4.57.6 (same as this project) but its librosa->numba
 # chain downgrades numpy below our 2.5.1 pin, hence GPU-env only.
@@ -49,6 +58,7 @@
 #   pip install -U "transformers>=5.14.0"
 # (re-create the venv, cell 3, before returning to the pinned transformers.)
 
-# Usage: uncomment the lines for the backends you enable, then
+# Usage: the Faster-Whisper CUDA 12 runtime above is installed by default.
+# Uncomment the other optional lines only for the backends you enable, then
 #   pip install -r requirements-gpu.txt
 # in the GPU environment (never in the dev venv).
