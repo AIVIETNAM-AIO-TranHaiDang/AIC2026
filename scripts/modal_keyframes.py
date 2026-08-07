@@ -15,7 +15,6 @@ a JSON report in the persistent ``aic-keyframe-results`` Modal Volume.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -144,11 +143,14 @@ def process_archive(archive: str, video_id: str | None = None) -> dict[str, obje
     counts = validate_ingest_output(data_root, expected_ids)
 
     result_path = Path("/results") / f"{artifact_stem}-keyframes.tar"
-    partial_path = result_path.with_suffix(result_path.suffix + ".part")
+    # Build outside the Volume so its background commits never expose a
+    # zero-byte ``.part`` artifact.  Only the completed TAR enters /results.
+    partial_path = work_root / f"{artifact_stem}-keyframes.tar.part"
     with tarfile.open(partial_path, mode="w") as bundle:
         bundle.add(data_root / "keyframes", arcname="data/keyframes")
         bundle.add(data_root / "manifests", arcname="data/manifests")
-    os.replace(partial_path, result_path)
+    shutil.copyfile(partial_path, result_path)
+    partial_path.unlink()
 
     report: dict[str, object] = {
         "archive": archive,
