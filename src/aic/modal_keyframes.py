@@ -285,6 +285,20 @@ def parse_video_ids(archive_name: str, raw_video_ids: str) -> tuple[str, ...]:
     return tuple(video_id for video_id in spec.video_ids if video_id in requested)
 
 
+def parse_archive_names(raw_archive_names: str) -> tuple[str, ...]:
+    """Parse a comma-separated archive selection in official sheet order."""
+    requested = {
+        item.strip() for item in raw_archive_names.split(",") if item.strip()
+    }
+    if not requested:
+        return tuple(ARCHIVE_SPECS)
+
+    unknown = sorted(requested - ARCHIVE_SPECS.keys())
+    if unknown:
+        raise ValueError(f"unknown archives: {', '.join(unknown)}")
+    return tuple(name for name in ARCHIVE_SPECS if name in requested)
+
+
 def validate_ready_archive(input_root: Path, archive_name: str) -> dict[str, Any]:
     """Validate the completion marker for one persistent source ZIP.
 

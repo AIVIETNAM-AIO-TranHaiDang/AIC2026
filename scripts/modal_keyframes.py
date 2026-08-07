@@ -344,3 +344,26 @@ def run(archive: str = "Videos_L21_a", video_ids: str = "") -> None:
         f"submitted {len(selected)} video job(s) for {archive}; "
         "completed outputs will be skipped"
     )
+
+
+@app.local_entrypoint(name="run_all")
+def run_all(archives: str = "") -> None:
+    """Submit several staged archives into one two-GPU Modal App queue."""
+    sys.path.insert(0, str(LOCAL_ROOT / "src"))
+    from aic.modal_keyframes import (  # noqa: PLC0415
+        get_archive_spec,
+        parse_archive_names,
+    )
+
+    selected_archives = parse_archive_names(archives)
+    submitted = 0
+    for archive in selected_archives:
+        video_ids = get_archive_spec(archive).video_ids
+        process_video.spawn_map([archive] * len(video_ids), video_ids)
+        submitted += len(video_ids)
+        print(f"submitted {len(video_ids)} video job(s) for {archive}")
+    print(
+        f"submitted {submitted} total video job(s) in one app; "
+        "at most two L4 containers will run concurrently and completed "
+        "outputs will be skipped"
+    )

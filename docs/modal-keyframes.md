@@ -81,6 +81,20 @@ Lệnh này có thể chạy lại bao nhiêu lần cũng được. Các output 
 phát hiện bằng report và kích thước TAR, không dựa vào việc nhớ thủ công video
 nào đã chạy.
 
+## Chạy nhiều ZIP trong cùng một hàng đợi
+
+Sau khi từng ZIP đã có marker `ready`, có thể gửi nhiều ZIP bằng một App:
+
+```bash
+modal run --detach scripts/modal_keyframes.py::run_all \
+  --archives Videos_L22_a,Videos_L23_a,Videos_L24_a,Videos_L25_a,Videos_L26_a,Videos_L26_b
+```
+
+Tất cả video dùng chung giới hạn tối đa hai container L4. Nếu workspace chạm
+usage limit, Modal có thể dừng các job đang chạy hoặc đang chờ; TAR/report đã
+commit trên Volume vẫn còn. Chạy lại đúng lệnh trên sẽ skip video hoàn tất và
+tiếp tục phần còn thiếu.
+
 ## Cấu trúc output của mỗi video
 
 TAR chứa đúng cấu trúc source:

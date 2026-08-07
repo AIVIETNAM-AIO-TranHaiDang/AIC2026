@@ -13,6 +13,7 @@ from aic.modal_keyframes import (
     get_archive_spec,
     make_runtime_config,
     output_stem,
+    parse_archive_names,
     parse_video_ids,
     select_zip_members,
     validate_ingest_output,
@@ -139,6 +140,15 @@ def test_parse_video_ids_defaults_to_archive_and_restores_official_order() -> No
     )
     with pytest.raises(ValueError, match="do not belong"):
         parse_video_ids("Videos_L21_a", "L22_V001")
+
+
+def test_parse_archive_names_defaults_to_all_and_restores_official_order() -> None:
+    assert parse_archive_names("") == tuple(ARCHIVE_SPECS)
+    assert parse_archive_names(
+        "Videos_L26_b, Videos_L22_a,Videos_L26_b"
+    ) == ("Videos_L22_a", "Videos_L26_b")
+    with pytest.raises(ValueError, match="unknown archives"):
+        parse_archive_names("Videos_L99_a")
 
 
 def test_ready_archive_requires_matching_marker_and_zip(tmp_path: Path) -> None:
