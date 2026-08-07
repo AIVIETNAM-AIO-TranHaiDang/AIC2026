@@ -968,3 +968,69 @@ và chạy lại thành công như output trên.
 
 `[TUI KHÔNG SỬA SOURCE]` Bước này chỉ load artifact và query bằng class của
 repo; logic retrieval, temporal fusion và gộp OCR đều được giữ nguyên.
+
+## 19. Chạy service/UI và smoke-test API
+
+### 19.1 Khởi động UI bằng source
+
+Tui chạy:
+
+```bash
+.venv/bin/python scripts/serve.py --config configs/t0-gtx1650.yaml
+```
+
+Server khởi động thành công:
+
+```text
+loaded 51 evidence bundles
+Application startup complete.
+Uvicorn running on http://127.0.0.1:8000
+```
+
+`GET /` trả `HTTP 200`, `content-type: text/html` và trang HTML 12141 byte.
+Repo không định nghĩa `/api/health`; probe bổ sung của tui tới route đó trả 404.
+Đây là gọi nhầm route không tồn tại, không phải lỗi startup/UI.
+
+### 19.2 Gửi query qua API mà UI sử dụng
+
+Tui gửi đúng schema `SearchRequest` của source:
+
+```bash
+curl -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8000/api/search \
+  --data '{"query":"lớp học làm bánh miễn phí","top_k":5}'
+```
+
+Cold request trả:
+
+```text
+HTTP 200
+X-Response-Time-Ms: 18911.0
+results: 5
+top1: L30_V078:19
+timestamp_ms: 63120
+```
+
+Request thứ hai khi SigLIP2/BGE-M3 đã warm:
+
+```text
+HTTP 200
+total: 0.772075s
+rank: 769.9ms
+top1: L30_V078:19
+timestamp_ms: 63120
+```
+
+JSON top 1 có ASR/OCR và các đường dẫn ảnh, ví dụ:
+
+```text
+/frames/L30_V078/L30_V078_s19_f1557.jpg
+```
+
+Tui gọi URL đó và nhận `HTTP 200`, JPEG `720x404`, 103994 byte. Như vậy service
+không chỉ xếp hạng được shot mà còn phục vụ đúng ảnh để UI hiển thị.
+
+`[KIỂM TRA BỔ SUNG]` Các lệnh `curl` chỉ kiểm tra response; API, ranking, JSON
+và static-frame route đều là source hiện có. `[TUI KHÔNG SỬA SOURCE]` Logic
+retrieval và UI không bị chỉnh sửa. Server được giữ chạy để mở trình duyệt tại
+`http://127.0.0.1:8000`; nhấn `Ctrl+C` ở terminal server khi muốn dừng.
