@@ -1,0 +1,18 @@
+# Minimal runtime for the keyframe-only Modal job.  The main requirements.txt
+# also installs embedding, ASR, OCR, retrieval, and UI dependencies that this
+# job never imports.
+av==18.0.0
+decord==0.6.0
+huggingface-hub==0.36.2
+httpx==0.28.1
+ImageHash==4.3.2
+numpy==2.5.1
+opencv-python-headless==5.0.0.93
+packaging==26.3
+Pillow==12.3.0
+pydantic==2.13.4
+PyYAML==6.0.3
+safetensors==0.8.0
+torch==2.13.0
+torchvision==0.28.0
+tqdm==4.68.4
