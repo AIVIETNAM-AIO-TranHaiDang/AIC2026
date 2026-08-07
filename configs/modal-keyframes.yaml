@@ -1,0 +1,23 @@
+# Modal-only overlay for the keyframe extraction job.
+#
+# scripts/modal_keyframes.py merges this small file onto t0.yaml inside the
+# cloud container, then passes the generated full profile to the unchanged
+# scripts/ingest_corpus.py entry point.  Keeping the override narrow makes it
+# explicit that Modal changes storage and selects OmniShotCut, nothing else.
+
+base_profile: t0.yaml
+
+paths:
+  # Relative to the per-job temporary working directory in the container.
+  data_root: data
+  # Persistent Modal Volume mounted by scripts/modal_keyframes.py.
+  models_dir: /models
+
+ingest:
+  shots:
+    model: omnishotcut
+    checkpoint: uva-cv-lab/OmniShotCut
+    # Keep gradual-transition shots, matching the OmniShotCut pilot that was
+    # reviewed locally.  Change this explicitly to clean_shot if the team
+    # decides transition ranges should be excluded.
+    mode: default

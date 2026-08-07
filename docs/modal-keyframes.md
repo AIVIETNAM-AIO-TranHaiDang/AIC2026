@@ -7,8 +7,12 @@ và không thay đổi thuật toán OmniShotCut.
 
 ## Những phần được giữ nguyên từ source
 
-Job tạo một profile tạm từ `configs/t0-gtx1650.yaml`. Chỉ hai đường dẫn lưu dữ
-liệu/model được đổi cho container; toàn bộ khối `ingest` giữ nguyên, gồm:
+Job tạo profile đầy đủ từ `configs/t0.yaml` và overlay nhỏ
+`configs/modal-keyframes.yaml`. Profile Modal chỉ được phép đổi hai đường dẫn
+lưu trữ cùng `model`, `checkpoint`, `mode` của shot detector; helper sẽ báo lỗi
+nếu ai vô tình thêm cấu hình embedding/ASR hoặc thay cách chọn keyframe.
+
+Những phần được dùng gồm:
 
 - OmniShotCut, checkpoint `uva-cv-lab/OmniShotCut`, mode `default`;
 - bốn vị trí keyframe `0.05, 0.35, 0.65, 0.95` và keyframe bổ sung;

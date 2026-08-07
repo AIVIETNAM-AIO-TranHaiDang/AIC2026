@@ -81,7 +81,6 @@ def _download(url: str, destination: Path) -> None:
     gpu="L4",
     cpu=4.0,
     memory=24_576,
-    ephemeral_disk=65_536,
     timeout=20 * 60 * 60,
     volumes={"/models": model_cache, "/results": results},
 )
@@ -121,7 +120,9 @@ def process_archive(archive: str, video_id: str | None = None) -> dict[str, obje
     zip_path.unlink()
 
     runtime_config = work_root / "modal-keyframes.yaml"
-    make_runtime_config(REMOTE_ROOT / "configs" / "t0-gtx1650.yaml", runtime_config)
+    make_runtime_config(
+        REMOTE_ROOT / "configs" / "modal-keyframes.yaml", runtime_config
+    )
     command = [
         sys.executable,
         str(REMOTE_ROOT / "scripts" / "ingest_corpus.py"),
@@ -153,7 +154,8 @@ def process_archive(archive: str, video_id: str | None = None) -> dict[str, obje
         "archive": archive,
         "video_id": video_id,
         "gpu": "L4",
-        "source_profile": "configs/t0-gtx1650.yaml",
+        "config_profile": "configs/modal-keyframes.yaml",
+        "base_profile": "configs/t0.yaml",
         "omnishotcut_commit": OMNISHOTCUT_COMMIT,
         "elapsed_seconds": round(elapsed, 3),
         "artifact": result_path.name,

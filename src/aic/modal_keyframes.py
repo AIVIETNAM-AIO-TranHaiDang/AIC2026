@@ -138,15 +138,57 @@ def select_zip_members(
     return [(selected[item], item) for item in sorted(selected)]
 
 
-def make_runtime_config(
-    source_profile: Path, destination: Path, *, models_dir: str = "/models"
-) -> dict[str, Any]:
-    """Clone the checked-in profile, changing storage paths and nothing else."""
-    raw = yaml.safe_load(source_profile.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or not isinstance(raw.get("paths"), dict):
-        raise ValueError(f"invalid source profile: {source_profile}")
-    raw["paths"]["data_root"] = "data"
-    raw["paths"]["models_dir"] = models_dir
+def _yaml_mapping(path: Path) -> dict[str, Any]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"YAML file must contain a mapping: {path}")
+    return raw
+
+
+def make_runtime_config(modal_profile: Path, destination: Path) -> dict[str, Any]:
+    """Apply the constrained Modal overlay to its declared base profile.
+
+    Only cloud storage paths and the OmniShotCut selector may be overridden.
+    Rejecting every other key prevents a hardware profile from silently
+    changing keyframe, deduplication, embedding, or Chronicle behaviour.
+    """
+    overlay = _yaml_mapping(modal_profile)
+    allowed_top = {"base_profile", "paths", "ingest"}
+    unexpected_top = set(overlay) - allowed_top
+    if unexpected_top:
+        raise ValueError(f"unsupported Modal override sections: {unexpected_top}")
+
+    base_name = overlay.get("base_profile")
+    if not isinstance(base_name, str) or Path(base_name).name != base_name:
+        raise ValueError("base_profile must be a filename beside the Modal profile")
+    source_profile = modal_profile.parent / base_name
+    raw = _yaml_mapping(source_profile)
+
+    paths = overlay.get("paths")
+    ingest = overlay.get("ingest")
+    if not isinstance(paths, dict) or set(paths) != {"data_root", "models_dir"}:
+        raise ValueError("Modal paths override must contain data_root and models_dir")
+    if not isinstance(ingest, dict) or set(ingest) != {"shots"}:
+        raise ValueError("Modal ingest override may contain only shots")
+    shots = ingest["shots"]
+    allowed_shots = {"model", "checkpoint", "mode"}
+    if not isinstance(shots, dict) or set(shots) != allowed_shots:
+        raise ValueError(
+            "Modal shots override must contain only model, checkpoint, and mode"
+        )
+    if shots["model"] != "omnishotcut":
+        raise ValueError("Modal keyframe job requires shots.model: omnishotcut")
+
+    raw_paths = raw.get("paths")
+    raw_ingest = raw.get("ingest")
+    if not isinstance(raw_paths, dict) or not isinstance(raw_ingest, dict):
+        raise ValueError(f"invalid base profile: {source_profile}")
+    raw_shots = raw_ingest.get("shots")
+    if not isinstance(raw_shots, dict):
+        raise ValueError(f"base profile has no ingest.shots: {source_profile}")
+    raw_paths.update(paths)
+    raw_shots.update(shots)
+
     destination.write_text(
         yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )

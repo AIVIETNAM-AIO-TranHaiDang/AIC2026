@@ -47,18 +47,47 @@ def test_select_rejects_video_outside_archive() -> None:
         select_zip_members([], get_archive_spec("Videos_L21_a"), "L22_V001")
 
 
-def test_runtime_config_only_overrides_paths(tmp_path: Path) -> None:
-    source = Path("configs/t0-gtx1650.yaml")
+def test_runtime_config_only_overrides_modal_fields(tmp_path: Path) -> None:
+    source = Path("configs/t0.yaml")
+    overlay = Path("configs/modal-keyframes.yaml")
     destination = tmp_path / "modal.yaml"
-    generated = make_runtime_config(source, destination)
+    generated = make_runtime_config(overlay, destination)
     original = yaml.safe_load(source.read_text(encoding="utf-8"))
 
-    assert generated["ingest"] == original["ingest"]
+    expected = yaml.safe_load(source.read_text(encoding="utf-8"))
+    expected["paths"].update({"data_root": "data", "models_dir": "/models"})
+    expected["ingest"]["shots"].update(
+        {
+            "model": "omnishotcut",
+            "checkpoint": "uva-cv-lab/OmniShotCut",
+            "mode": "default",
+        }
+    )
+    assert generated == expected
     assert generated["project"] == original["project"]
+    assert generated["ingest"]["keyframes"] == original["ingest"]["keyframes"]
+    assert generated["ingest"]["dedup"] == original["ingest"]["dedup"]
     assert generated["paths"]["data_root"] == "data"
     assert generated["paths"]["models_dir"] == "/models"
     parsed = load_config(destination)
-    assert parsed.ingest == load_config(source).ingest
+    assert parsed.ingest.keyframes == load_config(source).ingest.keyframes
+
+
+def test_runtime_config_rejects_unrelated_override(tmp_path: Path) -> None:
+    (tmp_path / "t0.yaml").write_text(
+        Path("configs/t0.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    overlay = tmp_path / "modal.yaml"
+    overlay.write_text(
+        "base_profile: t0.yaml\n"
+        "paths: {data_root: data, models_dir: /models}\n"
+        "ingest:\n"
+        "  shots: {model: omnishotcut, checkpoint: x, mode: default}\n"
+        "embed: {batch_size: 1}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unsupported Modal override"):
+        make_runtime_config(overlay, tmp_path / "generated.yaml")
 
 
 def test_validate_source_output_shape(tmp_path: Path) -> None:
