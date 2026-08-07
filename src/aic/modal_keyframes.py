@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import yaml
-
 
 @dataclass(frozen=True)
 class ArchiveSpec:
@@ -139,6 +137,8 @@ def select_zip_members(
 
 
 def _yaml_mapping(path: Path) -> dict[str, Any]:
+    import yaml  # noqa: PLC0415
+
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError(f"YAML file must contain a mapping: {path}")
@@ -152,6 +152,8 @@ def make_runtime_config(modal_profile: Path, destination: Path) -> dict[str, Any
     Rejecting every other key prevents a hardware profile from silently
     changing keyframe, deduplication, embedding, or Chronicle behaviour.
     """
+    import yaml  # noqa: PLC0415
+
     overlay = _yaml_mapping(modal_profile)
     allowed_top = {"base_profile", "paths", "ingest"}
     unexpected_top = set(overlay) - allowed_top

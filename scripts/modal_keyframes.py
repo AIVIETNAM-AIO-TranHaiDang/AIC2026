@@ -36,12 +36,8 @@ OMNISHOTCUT_COMMIT = "3331cd3163f7f17cd6d7c8fc12ffde22894ace01"
 DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 DOWNLOAD_LOG_BYTES = 256 * 1024 * 1024
 
-stage_image = (
-    modal.Image.debian_slim(python_version="3.12")
-    .pip_install("PyYAML==6.0.3")
-    .add_local_dir(
-        LOCAL_ROOT / "src", remote_path=str(REMOTE_ROOT / "src"), copy=True
-    )
+stage_image = modal.Image.debian_slim(python_version="3.12").add_local_dir(
+    LOCAL_ROOT / "src", remote_path=str(REMOTE_ROOT / "src"), copy=True
 )
 
 gpu_image = (
