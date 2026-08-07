@@ -825,3 +825,79 @@ OCR_OUTPUT_VALID
 
 Các số đếm và assertion trên là kiểm tra bổ sung của tui; việc nhận dạng,
 lọc confidence, ghi `ocr.jsonl` và ghép `chronicle.jsonl` là hành vi của source.
+
+## 17. Xây semantic và literal text index
+
+### 17.1 Source quy định gì?
+
+Sau khi `chronicle.jsonl` có ASR/OCR, script tiếp theo của repo là
+`scripts/build_text_indexes.py`. Source tạo hai cách nhìn cho mỗi shot:
+
+- `semantic_text`: caption và lời nói, dùng dense vector để tìm theo ý nghĩa;
+- `literal_text`: OCR và lời nói, dùng learned-sparse weights để ưu tiên từ/cụm
+  từ gần khớp nguyên văn.
+
+Profile GTX 1650 dùng `BAAI/bge-m3`, `batch_size: 2`. BGE-M3 tạo cả dense
+embedding 1024 chiều và sparse lexical weights. `[TUI KHÔNG SỬA SOURCE]` Phần
+gộp OCR được giữ nguyên theo yêu cầu; text index dùng đúng Chronicle hiện có.
+
+### 17.2 Lệnh tui đã chạy
+
+```bash
+/usr/bin/time -v .venv/bin/python scripts/build_text_indexes.py \
+  --config configs/t0-gtx1650.yaml
+```
+
+Lần đầu source tải 30 file của BGE-M3 vào `data/models`, tổng cache model khoảng
+4,3 GB. Kết quả:
+
+```text
+loaded BAAI/bge-m3 on cuda
+text indexes built: 50 semantic docs, 51 literal docs over 51 shots
+semantic_docs=50 literal_docs=51 shots=51
+Elapsed (wall clock) time: 22:38.59
+Maximum resident set size: 4832468 kbytes
+Exit status: 0
+```
+
+Phần lớn 22 phút 38 giây là thời gian tải model qua mạng. Sau khi cache đã có,
+thử load model và chạy hai query chỉ mất khoảng 9,67 giây.
+
+### 17.3 Artifact do source tạo
+
+```text
+data/pilot/indexes/
+├── chronicle-semantic/
+│   ├── ids.json
+│   ├── index.faiss
+│   ├── meta.json
+│   └── vectors.npy       # shape (50, 1024), float32
+└── chronicle-literal/
+    └── docs.json         # 51 ID + sparse token weights
+```
+
+Semantic chỉ có 50 document vì một shot không có caption/lời nói. Literal có
+đủ 51 document vì nguồn OCR+lời nói phủ toàn bộ 51 shot.
+
+### 17.4 Truy vấn kiểm tra bổ sung
+
+`[KIỂM TRA BỔ SUNG]` Tui dùng chính BGE-M3 và class index của source để encode
+hai câu query rồi load lại artifact từ đĩa:
+
+```text
+SEMANTIC_QUERY: lớp học làm bánh miễn phí
+  L30_V078:19 62120-64960ms score=0.7029
+  L30_V078:43 175760-178160ms score=0.6986
+  L30_V078:44 178160-180960ms score=0.6868
+
+LITERAL_QUERY: tv.tuoitre.vn
+  L30_V078:0 0-840ms score=0.1058
+  L30_V078:1 840-3000ms score=0.0730
+  L30_V078:41 164240-172880ms score=0.0136
+
+TEXT_INDEX_QUERY_OK
+```
+
+Query literal đưa shot 0, nơi OCR đọc được `tv.tuoitre.vn`, lên vị trí đầu.
+Phép query là kiểm tra bổ sung của tui; cách encode, lưu và search đều gọi class
+của source, không tự triển khai thuật toán index bên ngoài.
