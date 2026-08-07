@@ -901,3 +901,70 @@ TEXT_INDEX_QUERY_OK
 Query literal đưa shot 0, nơi OCR đọc được `tv.tuoitre.vn`, lên vị trí đầu.
 Phép query là kiểm tra bổ sung của tui; cách encode, lưu và search đều gọi class
 của source, không tự triển khai thuật toán index bên ngoài.
+
+## 18. Kiểm tra retrieval end-to-end không qua UI
+
+### 18.1 Warm-up fast path bằng script của source
+
+Tui chạy đúng cold-start drill có sẵn trong repo:
+
+```bash
+/usr/bin/time -v .venv/bin/python scripts/warmup.py \
+  --config configs/t0-gtx1650.yaml \
+  --query "lớp học làm bánh miễn phí"
+```
+
+`warmup.py` gọi `build_service_state()`, load các artifact và đẩy query qua
+`state.engine.rank_spec()`. Source cố ý dùng fallback spec nên phép kiểm tra
+không phụ thuộc Cortex LLM/API. Nó chạy query hai lần: lần đầu load lazy model,
+lần hai đo tốc độ khi model đã nằm trong RAM/VRAM.
+
+Kết quả:
+
+```text
+load artifacts (indexes, bundles, sessions): 0.0s
+warm fast-path models (first query): 22.1s
+warm repeat query: 0.7s
+total cold start: 22.9s
+fast path returned 51 candidates
+Exit status: 0
+Maximum resident set size: 7753200 kbytes
+```
+
+GTX 1650 load được cả SigLIP2 và BGE-M3 trong fast path, không CUDA OOM. Peak
+RSS khoảng 7,39 GiB là RAM của process, không phải số đo peak VRAM.
+
+FAISS thử module AVX2 rồi fallback sang module thường và load thành công. Source
+cũng cảnh báo chưa có overlay video index: corpus pilot không có OCR overlay đủ
+ngưỡng để tạo index đó; visual/semantic/literal retrieval vẫn chạy bình thường.
+
+### 18.2 In top candidate bằng chính engine của source
+
+`warmup.py` chỉ in số candidate. `[KIỂM TRA BỔ SUNG]` Tui load cùng service
+state, gọi đúng `state.engine.rank_spec(fallback_spec(query), query)` rồi chỉ
+in năm candidate đầu cùng metadata Chronicle:
+
+```text
+QUERY=lớp học làm bánh miễn phí
+CANDIDATES=51
+1. L30_V078:19 shot=62120-64960ms evidence=63120 score=0.071517
+2. L30_V078:7  shot=18320-20960ms evidence=19240 score=0.070528
+3. L30_V078:6  shot=15880-18320ms evidence=16000 score=0.068918
+4. L30_V078:24 shot=75720-77640ms evidence=76960 score=0.066942
+5. L30_V078:5  shot=13680-15880ms evidence=15760 score=0.066714
+END_TO_END_RETRIEVAL_OK
+PROBE_EXIT=0
+```
+
+`evidence=63120` nghĩa là dense-visual channel cung cấp keyframe bằng chứng tại
+63,12 giây, nằm trong shot 19 từ 62,12 đến 64,96 giây.
+
+Trong bản probe đầu tiên, tui tự thêm assertion rằng toàn bộ 51 score phải giảm
+dần và assertion đó fail sau khi retrieval đã trả kết quả. Đây là giả định kiểm
+tra sai của tui, không phải exception từ source: temporal fusion xếp các window
+representative trước, sau đó nối các base candidate chưa phát ra. Tui đọc lại
+`fuse_windows()`, bỏ assertion ngoài hợp đồng đó, giữ các kiểm tra ID/timestamp
+và chạy lại thành công như output trên.
+
+`[TUI KHÔNG SỬA SOURCE]` Bước này chỉ load artifact và query bằng class của
+repo; logic retrieval, temporal fusion và gộp OCR đều được giữ nguyên.
