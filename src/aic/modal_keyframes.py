@@ -266,6 +266,91 @@ def output_stem(archive_name: str, video_id: str | None) -> str:
     return f"{archive_name}--{video_id}"
 
 
+def parse_video_ids(archive_name: str, raw_video_ids: str) -> tuple[str, ...]:
+    """Parse a comma-separated CLI selection in deterministic archive order."""
+    spec = get_archive_spec(archive_name)
+    requested = {
+        item.strip() for item in raw_video_ids.split(",") if item.strip()
+    }
+    if not requested:
+        return spec.video_ids
+
+    unknown = sorted(requested - set(spec.video_ids))
+    if unknown:
+        raise ValueError(
+            f"videos do not belong to {archive_name}: {', '.join(unknown)}"
+        )
+    return tuple(video_id for video_id in spec.video_ids if video_id in requested)
+
+
+def validate_ready_archive(input_root: Path, archive_name: str) -> dict[str, Any]:
+    """Validate the completion marker for one persistent source ZIP.
+
+    The marker is written only after the ZIP central directory and official
+    video list have been checked.  A partial ZIP can therefore remain on the
+    Volume for a resumed download without ever being consumed by a GPU job.
+    """
+    spec = get_archive_spec(archive_name)
+    zip_path = input_root / f"{archive_name}.zip"
+    marker_path = input_root / f"{archive_name}.ready.json"
+    if not marker_path.is_file():
+        raise ValueError(f"archive has not been staged: {marker_path.name}")
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid archive marker: {marker_path}") from exc
+    if not isinstance(marker, dict):
+        raise ValueError(f"invalid archive marker: {marker_path}")
+    if marker.get("archive") != archive_name or marker.get("url") != spec.url:
+        raise ValueError(f"archive marker does not match {archive_name}")
+    if marker.get("videos") != len(spec.video_ids):
+        raise ValueError(f"archive marker has the wrong video count: {marker_path}")
+    if not zip_path.is_file() or zip_path.stat().st_size <= 0:
+        raise ValueError(f"staged ZIP is missing or empty: {zip_path}")
+    if marker.get("artifact_bytes") != zip_path.stat().st_size:
+        raise ValueError(f"staged ZIP size does not match its marker: {zip_path}")
+    checksum = marker.get("artifact_sha256")
+    if not isinstance(checksum, str) or len(checksum) != 64:
+        raise ValueError(f"archive marker has no SHA-256: {marker_path}")
+    return marker
+
+
+def completed_video_result(
+    results_root: Path, archive_name: str, video_id: str
+) -> dict[str, Any] | None:
+    """Return a completed per-video report, or ``None`` if it must rerun.
+
+    Reports produced by the original one-video pilot did not yet contain a
+    ``status`` field.  They are accepted when every other completion invariant
+    matches so that the verified pilot is not recomputed.
+    """
+    stem = output_stem(archive_name, video_id)
+    artifact_path = results_root / f"{stem}-keyframes.tar"
+    report_path = results_root / f"{stem}-report.json"
+    if not artifact_path.is_file() or not report_path.is_file():
+        return None
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(report, dict):
+        return None
+    expected = {
+        "archive": archive_name,
+        "video_id": video_id,
+        "artifact": artifact_path.name,
+        "artifact_bytes": artifact_path.stat().st_size,
+    }
+    if any(report.get(key) != value for key, value in expected.items()):
+        return None
+    if report.get("status", "done") != "done":
+        return None
+    checksum = report.get("artifact_sha256")
+    if not isinstance(checksum, str) or len(checksum) != 64:
+        return None
+    return report
+
+
 def sha256_file(path: Path) -> str:
     """Compute a download-verification hash without loading a tar into RAM."""
     digest = hashlib.sha256()

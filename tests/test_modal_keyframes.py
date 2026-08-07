@@ -9,11 +9,14 @@ import yaml
 from aic.config import load_config
 from aic.modal_keyframes import (
     ARCHIVE_SPECS,
+    completed_video_result,
     get_archive_spec,
     make_runtime_config,
     output_stem,
+    parse_video_ids,
     select_zip_members,
     validate_ingest_output,
+    validate_ready_archive,
 )
 
 
@@ -125,3 +128,59 @@ def test_validate_source_output_shape(tmp_path: Path) -> None:
 def test_pilot_and_full_outputs_cannot_collide() -> None:
     assert output_stem("Videos_L21_a", "L21_V001") == ("Videos_L21_a--L21_V001")
     assert output_stem("Videos_L21_a", None) == "Videos_L21_a"
+
+
+def test_parse_video_ids_defaults_to_archive_and_restores_official_order() -> None:
+    expected = ARCHIVE_SPECS["Videos_L21_a"].video_ids
+    assert parse_video_ids("Videos_L21_a", "") == expected
+    assert parse_video_ids("Videos_L21_a", "L21_V003, L21_V001,L21_V003") == (
+        "L21_V001",
+        "L21_V003",
+    )
+    with pytest.raises(ValueError, match="do not belong"):
+        parse_video_ids("Videos_L21_a", "L22_V001")
+
+
+def test_ready_archive_requires_matching_marker_and_zip(tmp_path: Path) -> None:
+    archive = "Videos_L21_a"
+    zip_path = tmp_path / f"{archive}.zip"
+    zip_path.write_bytes(b"official zip placeholder")
+    marker = {
+        "status": "ready",
+        "archive": archive,
+        "url": ARCHIVE_SPECS[archive].url,
+        "videos": len(ARCHIVE_SPECS[archive].video_ids),
+        "artifact": zip_path.name,
+        "artifact_bytes": zip_path.stat().st_size,
+        "artifact_sha256": "a" * 64,
+    }
+    (tmp_path / f"{archive}.ready.json").write_text(
+        json.dumps(marker), encoding="utf-8"
+    )
+    assert validate_ready_archive(tmp_path, archive) == marker
+
+    zip_path.write_bytes(b"truncated")
+    with pytest.raises(ValueError, match="size does not match"):
+        validate_ready_archive(tmp_path, archive)
+
+
+def test_completed_video_result_accepts_verified_legacy_pilot(tmp_path: Path) -> None:
+    archive = "Videos_L21_a"
+    video_id = "L21_V001"
+    stem = output_stem(archive, video_id)
+    artifact = tmp_path / f"{stem}-keyframes.tar"
+    artifact.write_bytes(b"tar output")
+    report = {
+        "archive": archive,
+        "video_id": video_id,
+        "artifact": artifact.name,
+        "artifact_bytes": artifact.stat().st_size,
+        "artifact_sha256": "b" * 64,
+    }
+    report_path = tmp_path / f"{stem}-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    assert completed_video_result(tmp_path, archive, video_id) == report
+
+    report["artifact_bytes"] += 1
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    assert completed_video_result(tmp_path, archive, video_id) is None
