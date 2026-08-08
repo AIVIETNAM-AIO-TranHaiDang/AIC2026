@@ -162,7 +162,6 @@ def upload_pilot(repo_id: str) -> dict[str, object]:
     image=image,
     cpu=4.0,
     memory=4_096,
-    ephemeral_disk=20_480,
     secrets=[hf_secret],
     timeout=24 * 60 * 60,
     retries=2,
