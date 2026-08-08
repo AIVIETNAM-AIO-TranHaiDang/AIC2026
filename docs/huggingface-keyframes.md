@@ -38,3 +38,15 @@ Một CPU container đọc Volume ở chế độ read-only và upload theo comm
 file. Khi chạy lại, file đã có đúng kích thước và SHA-256 (nếu Hub công bố LFS
 hash) được skip. Cuối lượt, uploader đối chiếu đúng 830 package files rồi tạo
 `dataset-index.jsonl`; `README.md` chỉ được tạo nếu repo chưa có README.
+
+## Kiểm tra tải ngược một package
+
+Lệnh sau tải lại một package qua quyền gated, đối chiếu kích thước và SHA-256
+với bản nguồn trên Modal, rồi kiểm tra TAR, ba manifest JSONL và ảnh JPG:
+
+```bash
+modal run scripts/modal_upload_hf.py::roundtrip \
+  --repo-id Neezidow/AIC2026-keyframes \
+  --archive Videos_L21_a \
+  --video-id L21_V001
+```
