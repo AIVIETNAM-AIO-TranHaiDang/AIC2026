@@ -1,0 +1,149 @@
+# Seed fixture for the full-corpus SigLIP2 deployment.
+#
+# Query IDs encode the evidence used to label the case. The currently deployed
+# baseline has only dense_visual enabled; OCR/ASR cases intentionally measure
+# what visual retrieval can recover before text indexes are added. Ground-truth
+# windows come from chronicle.jsonl and were checked against their keyframes.
+
+corpus_videos:
+  - L21_V009
+  - L21_V014
+  - L21_V027
+  - L21_V029
+  - L22_V005
+  - L22_V011
+  - L22_V020
+  - L22_V030
+  - L26_V094
+  - L26_V101
+  - L26_V106
+  - L26_V191
+
+cases:
+  - query_id: visual_001
+    kind: kis_t
+    text: "một mặt trăng tròn màu cam rất lớn trên bầu trời đêm, phía dưới là đồi tối"
+    truths:
+      - video_id: L22_V020
+        t_start_ms: 644800
+        t_end_ms: 648333
+
+  - query_id: visual_002
+    kind: kis_t
+    text: "cột khói đen dày đặc bốc cao phía sau những tán cây, video được quay dọc"
+    truths:
+      - video_id: L22_V005
+        t_start_ms: 903167
+        t_end_ms: 906067
+
+  - query_id: visual_003
+    kind: kis_t
+    text: "nữ MC mặc váy hồng hoa đứng trong trường quay, bên cạnh là màn hình phòng thí nghiệm với các đĩa petri"
+    truths:
+      - video_id: L22_V011
+        t_start_ms: 629600
+        t_end_ms: 634700
+
+  - query_id: visual_004
+    kind: kis_t
+    text: "đám đông rất lớn mặc áo trắng chen kín con phố nhỏ giữa các tòa nhà"
+    truths:
+      - video_id: L21_V029
+        t_start_ms: 723167
+        t_end_ms: 725033
+
+  - query_id: visual_005
+    kind: kis_t
+    text: "người đàn ông tóc đen mặc áo sơ mi xanh nhạt đang mỉm cười trong nhà"
+    truths:
+      - video_id: L21_V009
+        t_start_ms: 931480
+        t_end_ms: 938000
+
+  - query_id: visual_006
+    kind: kis_t
+    text: "nam đầu bếp và nữ người dẫn cùng vẫy tay trong căn bếp trắng, người nữ mặc áo sọc đen trắng"
+    truths:
+      - video_id: L26_V106
+        t_start_ms: 287840
+        t_end_ms: 299080
+
+  - query_id: ocr_001
+    kind: kis_t
+    text: "Hà Nội cháy công ty xốp, cột khói bốc cao hàng chục mét"
+    truths:
+      - video_id: L22_V005
+        t_start_ms: 896300
+        t_end_ms: 906067
+
+  - query_id: ocr_002
+    kind: kis_t
+    text: "Tây Ban Nha lễ hội cà chua La Tomatina"
+    truths:
+      - video_id: L21_V029
+        t_start_ms: 723167
+        t_end_ms: 731133
+
+  - query_id: ocr_003
+    kind: kis_t
+    text: "Thanh Hóa khống chế ổ dịch bạch hầu"
+    truths:
+      - video_id: L21_V014
+        t_start_ms: 23133
+        t_end_ms: 28100
+
+  - query_id: ocr_004
+    kind: kis_t
+    text: "TP HCM nghiêm cấm ép buộc học sinh mua đồng phục đầu năm học mới"
+    truths:
+      - video_id: L22_V030
+        t_start_ms: 669200
+        t_end_ms: 682760
+
+  - query_id: ocr_005
+    kind: kis_t
+    text: "xúc xích cắt hạt lựu"
+    truths:
+      - video_id: L26_V191
+        t_start_ms: 55000
+        t_end_ms: 58600
+
+  - query_id: asr_001
+    kind: kis_t
+    text: "pin dẻo như thạch rau câu do các nhà nghiên cứu Đại học Cambridge phát triển"
+    truths:
+      - video_id: L22_V011
+        t_start_ms: 623167
+        t_end_ms: 634700
+
+  - query_id: asr_002
+    kind: kis_t
+    text: "một bát canh có rất nhiều màu sắc"
+    truths:
+      - video_id: L26_V094
+        t_start_ms: 239520
+        t_end_ms: 246840
+
+  - query_id: asr_003
+    kind: kis_t
+    text: "ngôi nhà giống như một pháo đài và có thể chống chọi với các trận bão lớn"
+    truths:
+      - video_id: L21_V009
+        t_start_ms: 931480
+        t_end_ms: 938880
+
+  - query_id: asr_004
+    kind: kis_t
+    text: "áp chảo thịt trước rồi cho sốt nướng vào để thịt thấm vị mà không bị cháy"
+    truths:
+      - video_id: L26_V101
+        t_start_ms: 202320
+        t_end_ms: 213520
+
+  - query_id: asr_005
+    kind: kis_t
+    text: "chính phủ Hàn Quốc cung cấp 170 nghìn tấn thực phẩm thiết yếu như bắp cải, táo và lê"
+    truths:
+      - video_id: L21_V027
+        t_start_ms: 699633
+        t_end_ms: 709767

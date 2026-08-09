@@ -8,6 +8,9 @@ Usage:
     python scripts/evaluate_fixture.py --config configs/t0.yaml \
         --fixture data/fixture.yaml [--report data/reports/baseline.json]
 
+Pass ``--url`` to score the already-deployed service without loading its
+models or index again. This is the production-path option for a Modal UI.
+
 Pass ``--debug-top N`` to also dump, per case, the top-N returned
 ``(video_id, timestamp_ms)`` with a HIT marker against the labelled ranges.
 This separates a genuine retrieval weakness (top results are the *wrong*
@@ -270,6 +273,21 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--url",
+        default=None,
+        help=(
+            "Evaluate an already-running service through /api/search instead "
+            "of loading models and indexes in this process. The deployed "
+            "service decides which Cortex and retrieval channels are active."
+        ),
+    )
+    parser.add_argument(
+        "--timeout-s",
+        type=float,
+        default=120.0,
+        help="Per-query timeout used with --url.",
+    )
+    parser.add_argument(
         "--compare",
         default=None,
         help=(
@@ -297,9 +315,23 @@ def main() -> int:
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 
+    if args.url and args.compare:
+        raise SystemExit("--url cannot be combined with --compare")
+    if args.url and args.only_channels:
+        raise SystemExit(
+            "--url cannot be combined with --only-channels; channel weights "
+            "belong to the deployed service"
+        )
+    if args.url and args.use_cortex:
+        raise SystemExit(
+            "--use-cortex is implicit with --url; the deployed service owns "
+            "its compiler configuration"
+        )
+
     setup_logging(args.log_level)
     cfg = load_config(args.config)
-    apply_model_cache_env(cfg.paths.models_dir)
+    if not args.url:
+        apply_model_cache_env(cfg.paths.models_dir)
 
     if args.only_channels:
         if args.compare:
@@ -331,7 +363,6 @@ def main() -> int:
             )
         runs.append((args.compare, compare_cfg, args.compare_report))
 
-    from aic.embed.encoders import build_image_text_encoder
     from aic.eval.evaluate import (
         evaluate_qa_with_results,
         evaluate_with_results,
@@ -342,17 +373,30 @@ def main() -> int:
     )
     from aic.eval.fixture import load_fixture
     from aic.eval.metrics import is_hit
-    from aic.retrieval.build import build_fusion_retriever
-    from aic.textstack.embedder import build_textstack_embedders
+    from aic.eval.service_retriever import ServiceRetriever
 
     fixture_path = Path(args.fixture)
     fixture = load_fixture(fixture_path)
     has_kis = any(case.kind != "qa" for case in fixture.cases)
     has_qa = any(case.kind == "qa" for case in fixture.cases)
-    encoder = build_image_text_encoder(cfg.embed, cfg.paths.models_dir)
-    dense_embedder, sparse_embedder = build_textstack_embedders(
-        cfg.textstack, cfg.paths.models_dir
-    )
+    if args.url and has_qa:
+        raise SystemExit("--url currently supports KIS cases, not kind: qa")
+    if args.url and any(case.kind == "kis_v" for case in fixture.cases):
+        raise SystemExit("--url currently supports text queries, not kind: kis_v")
+
+    remote_retriever = None
+    if args.url:
+        encoder = dense_embedder = sparse_embedder = None
+        remote_retriever = ServiceRetriever(args.url, timeout_s=args.timeout_s)
+        print(f"retriever: deployed service {args.url.rstrip('/')}")
+    else:
+        from aic.embed.encoders import build_image_text_encoder
+        from aic.textstack.embedder import build_textstack_embedders
+
+        encoder = build_image_text_encoder(cfg.embed, cfg.paths.models_dir)
+        dense_embedder, sparse_embedder = build_textstack_embedders(
+            cfg.textstack, cfg.paths.models_dir
+        )
 
     summaries: list[tuple[str, object]] = []
     for config_path, run_cfg, report_path in runs:
@@ -379,7 +423,9 @@ def main() -> int:
             summaries.append((config_path, None))
             continue
 
-        if args.use_cortex:
+        if remote_retriever is not None:
+            retriever = remote_retriever
+        elif args.use_cortex:
             retriever = _build_cortex_retriever(
                 run_cfg, encoder, dense_embedder, sparse_embedder, fixture_path.parent
             )
@@ -388,6 +434,8 @@ def main() -> int:
                 f"(cortex.enabled={run_cfg.cortex.enabled})"
             )
         else:
+            from aic.retrieval.build import build_fusion_retriever
+
             retriever = build_fusion_retriever(
                 run_cfg,
                 encoder=encoder,
@@ -446,6 +494,8 @@ def main() -> int:
                 f"{config_path}: {recalls}  median={report.median_rank:.1f}"
                 f"  mean={report.mean_rank:.1f}"
             )
+    if remote_retriever is not None:
+        remote_retriever.close()
     return 0
 
 

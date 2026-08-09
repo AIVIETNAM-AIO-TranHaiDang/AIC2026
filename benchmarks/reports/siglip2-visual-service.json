@@ -1,0 +1,31 @@
+{
+  "n_cases": 16,
+  "n_misses": 4,
+  "recall_at": {
+    "1": 0.0625,
+    "5": 0.25,
+    "10": 0.3125,
+    "100": 0.75
+  },
+  "median_rank": 14.0,
+  "mean_rank": 66.125,
+  "mean_time_to_target_s": 99.1875,
+  "per_case_ranks": {
+    "visual_001": 14,
+    "visual_002": 11,
+    "visual_003": 1,
+    "visual_004": 4,
+    "visual_005": 94,
+    "visual_006": null,
+    "ocr_001": 11,
+    "ocr_002": 4,
+    "ocr_003": 7,
+    "ocr_004": null,
+    "ocr_005": 5,
+    "asr_001": null,
+    "asr_002": null,
+    "asr_003": 37,
+    "asr_004": 14,
+    "asr_005": 56
+  }
+}

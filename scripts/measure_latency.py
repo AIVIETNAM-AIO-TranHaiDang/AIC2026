@@ -64,7 +64,8 @@ def main() -> int:
 
     setup_logging(args.log_level)
     cfg = load_config(args.config)
-    apply_model_cache_env(cfg.paths.models_dir)
+    if not args.url:
+        apply_model_cache_env(cfg.paths.models_dir)
 
     import time
 
