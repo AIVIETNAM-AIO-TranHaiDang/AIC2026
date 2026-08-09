@@ -49,11 +49,13 @@ def _replace_link(path: Path, target: str) -> None:
     path.symlink_to(target)
 
 
-def _copy_required_index(source: Path, destination: Path) -> None:
-    """Copy only artifacts read by the current ``VectorIndex.load`` path."""
+def _copy_index_files(
+    source: Path, destination: Path, filenames: tuple[str, ...]
+) -> None:
+    """Copy only artifacts consumed by the corresponding index loader."""
 
     destination.mkdir(parents=True, exist_ok=True)
-    for filename in ("meta.json", "ids.json", "vectors.npy"):
+    for filename in filenames:
         source_path = source / filename
         if not source_path.is_file():
             raise FileNotFoundError(f"required index artifact missing: {source_path}")
@@ -117,7 +119,30 @@ def fastapi_app():
             index_name = f"keyframes-{model_slug(cfg.embed.model_id)}"
             local_indexes = Path("/tmp/aic_data/indexes")
             local_index = local_indexes / index_name
-            _copy_required_index(Path("/mnt/out/indexes") / index_name, local_index)
+            vector_files = ("meta.json", "ids.json", "vectors.npy")
+            _copy_index_files(
+                Path("/mnt/out/indexes") / index_name, local_index, vector_files
+            )
+
+            # Chronicle text indexes are optional so the deployment still
+            # supports a visual-only corpus. Once built, copy their loader
+            # artifacts to local NVMe alongside the visual index.
+            text_indexes = {
+                "chronicle-semantic": vector_files,
+                "chronicle-literal": ("docs.json",),
+                "chronicle-overlay": ("docs.json",),
+                "chronicle-factoid": ("docs.json",),
+            }
+            for text_index_name, filenames in text_indexes.items():
+                source = Path("/mnt/out/indexes") / text_index_name
+                if not source.is_dir():
+                    print(
+                        f"Optional text index absent: {text_index_name}", flush=True
+                    )
+                    continue
+                _copy_index_files(
+                    source, local_indexes / text_index_name, filenames
+                )
             _replace_link(Path("data/indexes"), str(local_indexes))
 
             cfg.paths.data_root = Path("/opt/aic/data")
@@ -185,4 +210,3 @@ def fastapi_app():
         return await real_app(scope, receive, send)
 
     return asgi_proxy
-
