@@ -57,9 +57,10 @@ def _replace_link(path: Path, target: str) -> None:
     gpu="L4",
     cpu=4.0,
     memory=16384,
-    # Keep the service scaled to zero when idle; the first request incurs a
-    # cold start while the index and model are loaded.
-    min_containers=0,
+    # Keep one warm container during an interactive test session. This avoids
+    # re-copying the index and rebuilding service state after every idle gap.
+    # Set this back to 0 after testing to stop idle GPU charges.
+    min_containers=1,
     max_containers=1,
     timeout=1800,
     secrets=[modal.Secret.from_name("gemini-aic")],
@@ -165,4 +166,3 @@ def fastapi_app():
     # FastAPI is only used as a tiny ASGI-compatible wrapper while the real
     # pipeline app is built in the background.
     return asgi_proxy
-
