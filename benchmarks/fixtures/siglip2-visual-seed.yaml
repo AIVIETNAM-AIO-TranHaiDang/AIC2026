@@ -1,8 +1,8 @@
 # Seed fixture for the full-corpus SigLIP2 deployment.
 #
-# Query IDs encode the evidence used to label the case. The currently deployed
-# baseline has only dense_visual enabled; OCR/ASR cases intentionally measure
-# what visual retrieval can recover before text indexes are added. Ground-truth
+# Query IDs encode the evidence used to label the case. The original baseline
+# had only dense_visual enabled; the same OCR/ASR cases are retained for a
+# before/after comparison once Chronicle text indexes are enabled. Ground-truth
 # windows come from chronicle.jsonl and were checked against their keyframes.
 
 corpus_videos:
