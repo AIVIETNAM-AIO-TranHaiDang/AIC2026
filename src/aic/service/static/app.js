@@ -3,8 +3,11 @@
 
 "use strict";
 
+const DEFAULT_RESULT_PAGE_SIZE = 20;
+
 const state = {
   results: [],
+  visibleResults: DEFAULT_RESULT_PAGE_SIZE,
   selected: -1,
   session: null, // {session_id, constraints, version}
   resultVersion: null,
@@ -91,7 +94,7 @@ function fmtTime(ms) {
 function renderResults() {
   const container = $("results");
   container.replaceChildren();
-  state.results.forEach((r, i) => {
+  state.results.slice(0, state.visibleResults).forEach((r, i) => {
     const card = document.createElement("div");
     card.className = "card";
     if (i === state.selected) card.classList.add("selected");
@@ -110,6 +113,8 @@ function renderResults() {
         const img = document.createElement("img");
         img.src = src;
         img.loading = "lazy";
+        img.decoding = "async";
+        img.fetchPriority = "low";
         img.alt = r.shot_key;
         strip.appendChild(img);
       }
@@ -151,6 +156,34 @@ function renderResults() {
     card.addEventListener("click", () => select(i));
     container.appendChild(card);
   });
+  renderResultControls();
+}
+
+function resultPageSize() {
+  return Number($("result-page-size")?.value) || DEFAULT_RESULT_PAGE_SIZE;
+}
+
+function resetVisibleResults() {
+  state.visibleResults = resultPageSize();
+  if (state.selected >= state.visibleResults) {
+    state.selected = state.results.length ? 0 : -1;
+  }
+}
+
+function renderResultControls() {
+  const controls = $("result-controls");
+  const count = $("result-count");
+  const more = $("results-more");
+  if (!controls || !count || !more) return;
+
+  const shown = Math.min(state.visibleResults, state.results.length);
+  controls.hidden = state.results.length === 0;
+  count.textContent = `${shown}/${state.results.length}`;
+  more.hidden = shown >= state.results.length;
+  if (!more.hidden) {
+    const increment = Math.min(resultPageSize(), state.results.length - shown);
+    more.textContent = `Hiển thị thêm ${increment}`;
+  }
 }
 
 function renderSession() {
@@ -223,6 +256,7 @@ function renderPlanner(planner) {
 function applyResponse(data) {
   state.results = data.results;
   state.selected = data.results.length ? 0 : -1;
+  resetVisibleResults();
   if (data.result_version !== null) state.resultVersion = data.result_version;
   if (data.session) state.session = data.session;
   renderResults();
@@ -237,13 +271,22 @@ function applyResponse(data) {
 function applyPreview(results) {
   state.results = results;
   state.selected = results.length ? 0 : -1;
+  resetVisibleResults();
   renderResults();
 }
 
 function select(i) {
   if (!state.results.length) return;
+  const previous = state.selected;
   state.selected = Math.max(0, Math.min(i, state.results.length - 1));
-  renderResults();
+  if (state.selected >= state.visibleResults) {
+    state.visibleResults = state.selected + 1;
+    renderResults();
+  } else {
+    const cards = $("results").children;
+    if (cards[previous]) cards[previous].classList.remove("selected");
+    if (cards[state.selected]) cards[state.selected].classList.add("selected");
+  }
   const card = $("results").children[state.selected];
   if (card) card.scrollIntoView({ block: "nearest" });
 }
@@ -453,3 +496,14 @@ $("reveal-input").addEventListener("keydown", (event) => {
   }
 });
 $("submit-close").addEventListener("click", () => $("submit-dialog").close());
+$("result-page-size").addEventListener("change", () => {
+  resetVisibleResults();
+  renderResults();
+});
+$("results-more").addEventListener("click", () => {
+  state.visibleResults = Math.min(
+    state.results.length,
+    state.visibleResults + resultPageSize(),
+  );
+  renderResults();
+});

@@ -69,6 +69,22 @@ button:hover { border-color: var(--accent); }
 }
 #statusbar #status { flex: 1; }
 
+#result-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+#result-controls[hidden], #results-more[hidden] { display: none; }
+#result-page-size {
+  padding: 3px 6px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}
+#results-more { padding: 3px 10px; font-size: 12px; }
+
 #planner { color: var(--accent); }
 
 #advisor { color: var(--positive); }

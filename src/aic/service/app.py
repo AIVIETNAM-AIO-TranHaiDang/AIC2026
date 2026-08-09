@@ -944,7 +944,10 @@ def create_app(state: ServiceState, cfg: ServiceConfig) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(_STATIC_DIR / "index.html")
+        return FileResponse(
+            _STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-store"},
+        )
 
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     if state.frames_dir is not None and state.frames_dir.is_dir():

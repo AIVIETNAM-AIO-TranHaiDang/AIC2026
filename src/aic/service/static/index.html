@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AIC 2026 — retrieval console</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
   <header>
@@ -29,6 +29,17 @@
 
   <div id="statusbar">
     <span id="status">Ready.</span>
+    <div id="result-controls" hidden>
+      <label for="result-page-size">Hiển thị</label>
+      <select id="result-page-size" aria-label="Số kết quả hiển thị">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+      <span id="result-count"></span>
+      <button id="results-more" type="button">Hiển thị thêm</button>
+    </div>
     <span id="advisor" hidden></span>
     <span id="planner" hidden></span>
     <span id="escalations" hidden></span>
@@ -71,7 +82,7 @@
     <kbd>v</kbd> verify
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2"></script>
   <script>
     // VQA Track A/B: isolated from the KIS console (app.js). Asks /api/qa (or
     // its streaming twin /api/qa/stream when the server offers it) and renders
