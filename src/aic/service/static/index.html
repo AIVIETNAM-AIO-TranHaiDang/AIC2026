@@ -1,34 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AIC 2026 — retrieval console</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <title>AIC 2026 — Video Retrieval</title>
+  <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
   <header>
-    <form id="search-form">
-      <input id="query" type="text" autocomplete="off"
-             placeholder="Query (Vietnamese or English) — Enter to search">
-      <button type="submit">Search</button>
-    </form>
-    <form id="qa-form">
-      <input id="question" type="text" autocomplete="off"
-             placeholder="Question (VQA Track A) — Enter to ask">
-      <button type="submit">Ask</button>
-    </form>
-    <div id="session-panel">
-      <button id="session-new" type="button" title="Start a KIS-C session">KIS-C session</button>
-      <span id="session-info" hidden>
-        <span id="session-version"></span>
-        <input id="reveal-input" type="text" placeholder="New revealed detail — Enter to add">
-      </span>
+    <div class="brand" aria-label="AIC 2026 Video Retrieval">
+      <span class="brand-mark">AIC</span>
+      <div>
+        <strong>Video Retrieval</strong>
+        <small>AIC 2026 · workspace thử nghiệm</small>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="task-tabs" aria-label="Dạng truy vấn của BTC">
+        <span class="task-tab active">KIS-T <small>Tìm khoảnh khắc</small></span>
+        <span class="task-tab">KIS-C <small>Thêm gợi ý</small></span>
+        <span class="task-tab muted">Q&amp;A <small>cần backend VQA</small></span>
+        <span class="task-tab muted">TRAKE <small>chưa hỗ trợ</small></span>
+      </div>
+      <form id="search-form">
+        <label class="sr-only" for="query">Mô tả sự kiện cần tìm</label>
+        <input id="query" type="text" autocomplete="off"
+               placeholder="Mô tả sự kiện bằng tiếng Việt hoặc tiếng Anh…">
+        <button id="query-clear" type="button" class="secondary" title="Xoá truy vấn">Xoá</button>
+        <button type="submit" class="primary">Tìm kiếm</button>
+      </form>
+      <div id="session-panel">
+        <button id="session-new" type="button" title="Tạo phiên để thêm gợi ý từng bước">Bắt đầu KIS-C</button>
+        <span id="session-info" hidden>
+          <span id="session-version"></span>
+          <input id="reveal-input" type="text" placeholder="Gợi ý mới, ví dụ: người mặc áo đỏ">
+        </span>
+      </div>
     </div>
   </header>
 
   <div id="statusbar">
-    <span id="status">Ready.</span>
+    <span id="status" aria-live="polite">Sẵn sàng. Nhập mô tả để tìm khoảnh khắc phù hợp.</span>
     <div id="result-controls" hidden>
       <label for="result-page-size">Hiển thị</label>
       <select id="result-page-size" aria-label="Số kết quả hiển thị">
@@ -46,43 +58,52 @@
   </div>
 
   <aside id="constraints" hidden>
-    <h2>Constraint stack</h2>
+    <h2>Gợi ý đã thêm</h2>
+    <p>Kết quả chỉ được thu hẹp dần khi bạn thêm gợi ý mới.</p>
     <ol id="constraint-list"></ol>
   </aside>
 
-  <main id="results" tabindex="-1"></main>
+  <main id="results" tabindex="-1" aria-label="Kết quả tìm kiếm"></main>
 
-  <section id="qa-results" hidden>
-    <h2>Answer cards (Track A)</h2>
-    <p id="qa-plan"></p>
-    <ol id="qa-cards"></ol>
-    <div id="qa-groups-wrap" hidden>
-      <h2>Voted answers (Track B) &mdash; <kbd>n</kbd> next group</h2>
-      <ol id="qa-groups"></ol>
-    </div>
-    <p id="qa-count" hidden></p>
-    <p id="qa-hint" hidden></p>
-    <div id="qa-reverse-wrap" hidden>
-      <h2>Reverse-retrieval answers</h2>
-      <ol id="qa-reverse"></ol>
-    </div>
-  </section>
+  <details id="qa-panel">
+    <summary>Q&amp;A thử nghiệm <span>· chỉ dùng khi profile đã bật VQA</span></summary>
+    <form id="qa-form">
+      <label class="sr-only" for="question">Câu hỏi VQA</label>
+      <input id="question" type="text" autocomplete="off"
+             placeholder="Ví dụ: Có bao nhiêu người đứng trên sân khấu?">
+      <button type="submit">Hỏi</button>
+    </form>
+    <section id="qa-results" hidden>
+      <h2>Kết quả Q&amp;A</h2>
+      <p id="qa-plan"></p>
+      <ol id="qa-cards"></ol>
+      <div id="qa-groups-wrap" hidden>
+        <h2>Các đáp án được bỏ phiếu &mdash; <kbd>n</kbd> để đổi lựa chọn</h2>
+        <ol id="qa-groups"></ol>
+      </div>
+      <p id="qa-count" hidden></p>
+      <p id="qa-hint" hidden></p>
+      <div id="qa-reverse-wrap" hidden>
+        <h2>Đáp án reverse retrieval</h2>
+        <ol id="qa-reverse"></ol>
+      </div>
+    </section>
+  </details>
 
   <dialog id="submit-dialog">
-    <h2>Submission payload</h2>
+    <h2>Thông tin kết quả đã chọn</h2>
+    <p id="submit-note">Đã sao chép khi trình duyệt cho phép.</p>
     <pre id="submit-payload"></pre>
-    <button id="submit-close" type="button">Close (Esc)</button>
+    <button id="submit-copy" type="button">Sao chép</button>
+    <button id="submit-close" type="button">Đóng (Esc)</button>
   </dialog>
 
   <footer id="help">
-    <kbd>Enter</kbd> search &nbsp; <kbd>1</kbd>–<kbd>9</kbd> select &nbsp;
-    <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>f</kbd> more like this &nbsp;
-    <kbd>x</kbd> not this &nbsp; <kbd>m</kbd> similar &nbsp; <kbd>s</kbd> submit
-    &nbsp; <kbd>r</kbd> re-rank &nbsp; <kbd>i</kbd> imagine &nbsp;
-    <kbd>v</kbd> verify
+    <span><kbd>Enter</kbd> tìm kiếm · <kbd>/</kbd> đặt con trỏ vào ô query · <kbd>1</kbd>–<kbd>9</kbd> chọn nhanh</span>
+    <span><kbd>←</kbd><kbd>→</kbd> đổi kết quả · <kbd>f</kbd> phù hợp · <kbd>x</kbd> không phù hợp · <kbd>m</kbd> tìm cảnh tương tự · <kbd>s</kbd> xem kết quả nộp</span>
   </footer>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
   <script>
     // VQA Track A/B: isolated from the KIS console (app.js). Asks /api/qa (or
     // its streaming twin /api/qa/stream when the server offers it) and renders

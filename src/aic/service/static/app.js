@@ -95,18 +95,33 @@ function renderResults() {
   const container = $("results");
   container.replaceChildren();
   state.results.slice(0, state.visibleResults).forEach((r, i) => {
-    const card = document.createElement("div");
+    const card = document.createElement("article");
     card.className = "card";
+    card.tabIndex = 0;
     if (i === state.selected) card.classList.add("selected");
     if (state.positives.has(r.shot_key)) card.classList.add("fed-positive");
     if (state.negatives.has(r.shot_key)) card.classList.add("fed-negative");
 
+    const cardTop = document.createElement("div");
+    cardTop.className = "card-top";
     const rank = document.createElement("div");
     rank.className = "rank";
-    rank.textContent = `#${i + 1} · ${r.shot_key} · ${fmtTime(r.timestamp_ms)}`;
-    card.appendChild(rank);
+    rank.textContent = `#${i + 1} · ${r.shot_key}`;
+    cardTop.appendChild(rank);
+    if (Number.isFinite(Number(r.score))) {
+      const score = document.createElement("span");
+      score.className = "score";
+      score.textContent = `score ${Number(r.score).toFixed(3)}`;
+      cardTop.appendChild(score);
+    }
+    card.appendChild(cardTop);
 
-    if (r.frames.length) {
+    const location = document.createElement("div");
+    location.className = "location";
+    location.textContent = `${r.video_id} · ${fmtTime(r.timestamp_ms)}`;
+    card.appendChild(location);
+
+    if (Array.isArray(r.frames) && r.frames.length) {
       const strip = document.createElement("div");
       strip.className = "strip";
       for (const src of r.frames.slice(0, 4)) {
@@ -123,17 +138,23 @@ function renderResults() {
 
     const caption = document.createElement("div");
     caption.className = "caption";
-    caption.textContent = r.caption || "(no caption)";
+    caption.textContent = r.caption || "Chưa có caption cho shot này.";
+    if (!r.caption) caption.classList.add("empty");
     card.appendChild(caption);
 
     const snippetParts = [];
-    if (r.ocr_lines.length) snippetParts.push(`OCR: ${r.ocr_lines.join(" | ")}`);
+    if (r.ocr_lines?.length) snippetParts.push(`OCR: ${r.ocr_lines.join(" | ")}`);
     if (r.asr_text) snippetParts.push(`ASR: ${r.asr_text}`);
     if (snippetParts.length) {
+      const evidence = document.createElement("details");
+      evidence.className = "evidence";
+      const summary = document.createElement("summary");
+      summary.textContent = "Xem bằng chứng OCR / ASR";
       const snippet = document.createElement("div");
       snippet.className = "snippet";
       snippet.textContent = snippetParts.join("\n");
-      card.appendChild(snippet);
+      evidence.append(summary, snippet);
+      card.appendChild(evidence);
     }
 
     const meta = document.createElement("div");
@@ -154,6 +175,38 @@ function renderResults() {
     card.appendChild(timeline);
 
     card.addEventListener("click", () => select(i));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select(i);
+      }
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    const makeAction = (label, title, callback, className = "") => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.title = title;
+      if (className) button.className = className;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        select(i);
+        callback();
+      });
+      return button;
+    };
+    actions.append(
+      makeAction("Chọn", "Đánh dấu kết quả đang xem", () => select(i)),
+      makeAction("Phù hợp", "Phản hồi: kết quả phù hợp (F)", () =>
+        sendFeedback(r.shot_key, true), "positive"),
+      makeAction("Không đúng", "Phản hồi: kết quả không phù hợp (X)", () =>
+        sendFeedback(r.shot_key, false), "negative"),
+      makeAction("Nộp", "Xem dữ liệu kết quả tạm thời (S)", submitSelected,
+        "submit"),
+    );
+    card.appendChild(actions);
     container.appendChild(card);
   });
   renderResultControls();
@@ -189,12 +242,15 @@ function renderResultControls() {
 function renderSession() {
   const panel = $("session-info");
   const aside = $("constraints");
+  const sessionButton = $("session-new");
   if (!state.session) {
     panel.hidden = true;
     aside.hidden = true;
+    sessionButton.textContent = "Bắt đầu KIS-C";
     return;
   }
   panel.hidden = false;
+  sessionButton.textContent = "Tạo phiên KIS-C mới";
   $("session-version").textContent = `v${state.session.version}`;
   aside.hidden = state.session.constraints.length === 0;
   const list = $("constraint-list");
@@ -373,6 +429,9 @@ async function submitSelected() {
       result_version: state.resultVersion,
     });
     $("submit-payload").textContent = data.payload;
+    $("submit-note").textContent =
+      "Bản xem trước hiện dùng timestamp_ms. Theo PDF của BTC, format chính " +
+      "thức cần frame_id; chưa dùng payload này để nộp khi BTC chưa công bố schema.";
     $("submit-dialog").showModal();
     if (navigator.clipboard) {
       navigator.clipboard.writeText(data.payload).catch(() => {});
@@ -450,7 +509,7 @@ async function addReveal() {
 document.addEventListener("keydown", (event) => {
   const inInput = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
   if (event.key === "Escape") {
-    $("submit-dialog").close();
+    if ($("submit-dialog").open) $("submit-dialog").close();
     document.activeElement.blur();
     return;
   }
@@ -488,6 +547,11 @@ $("search-form").addEventListener("submit", (event) => {
   runSearch();
   $("query").blur();
 });
+$("query-clear").addEventListener("click", () => {
+  $("query").value = "";
+  $("query").focus();
+  setStatus("Đã xoá truy vấn.");
+});
 $("session-new").addEventListener("click", newSession);
 $("reveal-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -496,6 +560,16 @@ $("reveal-input").addEventListener("keydown", (event) => {
   }
 });
 $("submit-close").addEventListener("click", () => $("submit-dialog").close());
+$("submit-copy").addEventListener("click", async () => {
+  const text = $("submit-payload").textContent;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    $("submit-note").textContent = "Đã sao chép dữ liệu kết quả vào clipboard.";
+  } catch {
+    $("submit-note").textContent = "Không thể tự sao chép; hãy chọn và copy nội dung bên dưới.";
+  }
+});
 $("result-page-size").addEventListener("change", () => {
   resetVisibleResults();
   renderResults();
