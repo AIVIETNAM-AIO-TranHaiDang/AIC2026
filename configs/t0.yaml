@@ -45,7 +45,7 @@ embed:
   model: siglip2
   model_id: google/siglip2-so400m-patch16-384
   device: auto
-  batch_size: 8
+  batch_size: 16
   # Shard storage: safetensors (default, explicit dtype, safe load) | npy.
   # store_dtype None keeps the encoder output (float32); set e.g. float16 to
   # halve shard size (upcast to float32 on load). A dtype numpy can't store
