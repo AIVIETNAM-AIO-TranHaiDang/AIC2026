@@ -1,0 +1,10 @@
+# Local runtime storage mounted from the Windows partition.
+/data
+/.venv
+
+# Python-generated files.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AIC 2026 — Video Retrieval</title>
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
   <header>
@@ -57,10 +57,25 @@
     <span id="escalations" hidden></span>
   </div>
 
-  <aside id="constraints" hidden>
-    <h2>Gợi ý đã thêm</h2>
-    <p>Kết quả chỉ được thu hẹp dần khi bạn thêm gợi ý mới.</p>
-    <ol id="constraint-list"></ol>
+  <aside id="sidebar">
+    <section id="submission">
+      <div class="sidebar-heading">
+        <h2>Danh sách nộp KIS</h2>
+        <span id="submission-count">0/100</span>
+      </div>
+      <p>Chọn keyframe cụ thể rồi thêm, sắp xếp đáp án tốt nhất lên đầu.</p>
+      <ol id="submission-list"></ol>
+      <div class="submission-actions">
+        <button id="submission-export-csv" type="button" disabled>Xuất CSV</button>
+        <button id="submission-export-json" type="button" disabled>Xuất JSON</button>
+        <button id="submission-clear" type="button" disabled>Xóa hết</button>
+      </div>
+    </section>
+    <section id="constraints" hidden>
+      <h2>Gợi ý đã thêm</h2>
+      <p>Kết quả chỉ được thu hẹp dần khi bạn thêm gợi ý mới.</p>
+      <ol id="constraint-list"></ol>
+    </section>
   </aside>
 
   <main id="results" tabindex="-1" aria-label="Kết quả tìm kiếm"></main>
@@ -91,8 +106,8 @@
   </details>
 
   <dialog id="submit-dialog">
-    <h2>Thông tin kết quả đã chọn</h2>
-    <p id="submit-note">Đã sao chép khi trình duyệt cho phép.</p>
+    <h2>Kết quả Q&amp;A tạm thời</h2>
+    <p id="submit-note">Payload này chỉ dành cho Q&amp;A thử nghiệm.</p>
     <pre id="submit-payload"></pre>
     <button id="submit-copy" type="button">Sao chép</button>
     <button id="submit-close" type="button">Đóng (Esc)</button>
@@ -100,10 +115,10 @@
 
   <footer id="help">
     <span><kbd>Enter</kbd> tìm kiếm · <kbd>/</kbd> đặt con trỏ vào ô query · <kbd>1</kbd>–<kbd>9</kbd> chọn nhanh</span>
-    <span><kbd>←</kbd><kbd>→</kbd> đổi kết quả · <kbd>f</kbd> phù hợp · <kbd>x</kbd> không phù hợp · <kbd>m</kbd> tìm cảnh tương tự · <kbd>s</kbd> xem kết quả nộp</span>
+    <span><kbd>←</kbd><kbd>→</kbd> đổi kết quả · <kbd>f</kbd> phù hợp · <kbd>x</kbd> không đúng · <kbd>m</kbd> tìm cảnh tương tự · <kbd>s</kbd> thêm frame đã chọn</span>
   </footer>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=5"></script>
   <script>
     // VQA Track A/B: isolated from the KIS console (app.js). Asks /api/qa (or
     // its streaming twin /api/qa/stream when the server offers it) and renders

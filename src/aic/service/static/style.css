@@ -30,7 +30,7 @@ body {
   grid-template-areas:
     "header header"
     "status status"
-    "results constraints"
+    "results sidebar"
     "qa qa"
     "help help";
   height: 100vh;
@@ -150,17 +150,29 @@ main#results {
   align-content: start;
   outline: none;
 }
-aside#constraints {
-  grid-area: constraints;
+aside#sidebar {
+  grid-area: sidebar;
   background: var(--panel);
   border-left: 1px solid var(--line);
   padding: 14px;
   overflow-y: auto;
 }
-aside#constraints h2 { margin: 0 0 5px; font-size: 14px; }
-aside#constraints p { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+#sidebar section + section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+#sidebar h2 { margin: 0 0 5px; font-size: 14px; }
+#sidebar p { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 #constraint-list { margin: 0; padding-left: 20px; }
 #constraint-list li { margin-bottom: 7px; }
+.sidebar-heading { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+#submission-count { color: var(--accent); font-size: 12px; white-space: nowrap; }
+#submission-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+#submission-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: #141923; border: 1px solid #2b3545; border-radius: 6px; padding: 5px 6px 5px 8px; color: #d9ebff; font-size: 12px; cursor: grab; }
+#submission-list li.dragging { opacity: .45; cursor: grabbing; }
+#submission-list li.drag-over { border-color: var(--accent); background: var(--accent-soft); }
+#submission-list li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.submission-item-actions { display: flex; flex: 0 0 auto; gap: 3px; }
+.submission-item-actions button { padding: 1px 5px; min-width: 25px; border-radius: 4px; }
+.submission-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.submission-actions button { padding: 5px 7px; font-size: 12px; }
 
 .card {
   min-width: 0;
@@ -180,7 +192,9 @@ aside#constraints p { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 .score { color: #b7c1cf; font-size: 11px; padding: 2px 6px; border-radius: 999px; background: #252d3a; white-space: nowrap; }
 .location { color: #d9ebff; font-size: 15px; font-weight: 700; }
 .card .strip { display: flex; gap: 4px; overflow-x: auto; scrollbar-color: #536276 transparent; }
-.card .strip img { height: 88px; min-width: 118px; object-fit: cover; border-radius: 5px; background: #0b0e14; }
+.card .strip img { height: 88px; min-width: 118px; object-fit: cover; border: 2px solid transparent; border-radius: 5px; background: #0b0e14; cursor: pointer; }
+.card .strip img:hover { border-color: #58708d; }
+.card .strip img.frame-selected { border-color: var(--accent); box-shadow: 0 0 0 1px #0c2138; }
 .card .caption { min-height: 1.4em; color: #e9eff8; }
 .card .caption.empty { color: var(--subtle); font-style: italic; }
 .evidence { border-top: 1px solid #2c3543; padding-top: 6px; }
@@ -222,6 +236,11 @@ footer#help {
 }
 kbd { background: #2b3442; border-radius: 4px; padding: 1px 5px; font-family: inherit; color: #dce8f7; }
 
+/* VQA Track B output remains available when a VQA-enabled profile is used. */
+#qa-groups li { cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+#qa-groups li.qa-group-active { background: var(--accent-soft); }
+.qa-confident { color: var(--positive); font-style: normal; font-weight: 600; }
+
 dialog#submit-dialog {
   background: var(--panel);
   color: var(--text);
@@ -235,11 +254,6 @@ dialog#submit-dialog h2 { margin-top: 0; }
 #submit-note { color: var(--warning); font-size: 13px; }
 dialog#submit-dialog pre { background: #0e1219; padding: 11px; border-radius: 6px; overflow-x: auto; }
 
-/* VQA Track B output remains available when a VQA-enabled profile is used. */
-#qa-groups li { cursor: pointer; padding: 4px 6px; border-radius: 6px; }
-#qa-groups li.qa-group-active { background: var(--accent-soft); }
-.qa-confident { color: var(--positive); font-style: normal; font-weight: 600; }
-
 @media (max-width: 850px) {
   body {
     height: auto;
@@ -250,7 +264,7 @@ dialog#submit-dialog pre { background: #0e1219; padding: 11px; border-radius: 6p
       "header"
       "status"
       "results"
-      "constraints"
+      "sidebar"
       "qa"
       "help";
   }
@@ -261,7 +275,7 @@ dialog#submit-dialog pre { background: #0e1219; padding: 11px; border-radius: 6p
   #query { flex-basis: 100%; }
   #session-panel { flex-wrap: wrap; }
   #session-info { flex-basis: 100%; }
-  aside#constraints { border-left: 0; border-top: 1px solid var(--line); max-height: 180px; }
+  aside#sidebar { border-left: 0; border-top: 1px solid var(--line); max-height: 300px; }
   main#results { grid-template-columns: 1fr; }
   footer#help { display: none; }
 }

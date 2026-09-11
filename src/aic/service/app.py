@@ -189,7 +189,15 @@ def _result_view(state: ServiceState, candidate: ShotCandidate) -> dict | None:
             "actions": bundle.actions,
             "ocr_lines": bundle.ocr_lines,
             "asr_text": bundle.asr_text,
-            "frames": [f"/frames/{name}" for name in bundle.frames],
+            "frames": [
+                {
+                    "url": f"/frames/{ref.name}",
+                    "keyframe_id": ref.keyframe_id,
+                    "frame_id": ref.frame_id,
+                    "timestamp_ms": ref.timestamp_ms,
+                }
+                for ref in bundle.frame_refs
+            ],
         }
     meta = state.shot_meta.get(candidate.shot_key)
     if meta is None:

@@ -14,11 +14,14 @@ const state = {
   lastQuery: "",
   positives: new Set(),
   negatives: new Set(),
+  submission: loadSubmission(), // ordered [{video_id, frame_id, ...}], max 100
+  selectedFrames: new Map(), // shot_key -> keyframe_id
   escalations: [], // [{name, timeout_s}] from /api/escalations
 };
 
 // Escalation hotkeys; only names the server actually offers are bound.
 const ESCALATION_KEYS = { r: "rerank", i: "imagine", v: "vlm_verify" };
+let draggedSubmissionIndex = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -91,10 +94,170 @@ function fmtTime(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+function loadSubmission() {
+  try {
+    const entries = JSON.parse(localStorage.getItem("aic-kis-submission") || "[]");
+    if (!Array.isArray(entries)) return [];
+    return entries.filter((entry) =>
+      typeof entry?.video_id === "string" &&
+      Number.isInteger(entry.frame_id) && entry.frame_id >= 0,
+    ).slice(0, 100);
+  } catch {
+    return [];
+  }
+}
+
+function persistSubmission() {
+  localStorage.setItem("aic-kis-submission", JSON.stringify(state.submission));
+}
+
+function defaultFrame(result) {
+  if (!result.frames?.length) return null;
+  return result.frames.reduce((best, frame) =>
+    Math.abs(frame.timestamp_ms - result.timestamp_ms) <
+    Math.abs(best.timestamp_ms - result.timestamp_ms) ? frame : best,
+  );
+}
+
+function selectedFrame(result) {
+  const selectedId = state.selectedFrames.get(result.shot_key);
+  return result.frames?.find((frame) => frame.keyframe_id === selectedId) ||
+    defaultFrame(result);
+}
+
+function submissionKey(entry) {
+  return `${entry.video_id}:${entry.frame_id}`;
+}
+
+function renderSubmission() {
+  const list = $("submission-list");
+  const count = $("submission-count");
+  const hasEntries = state.submission.length > 0;
+  list.replaceChildren();
+  count.textContent = `${state.submission.length}/100`;
+  $("submission-export-csv").disabled = !hasEntries;
+  $("submission-export-json").disabled = !hasEntries;
+  $("submission-clear").disabled = !hasEntries;
+
+  state.submission.forEach((entry, index) => {
+    const item = document.createElement("li");
+    item.draggable = true;
+    item.title = "Kéo thả để đổi thứ tự";
+    item.addEventListener("dragstart", (event) => {
+      draggedSubmissionIndex = index;
+      item.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => {
+      draggedSubmissionIndex = null;
+      item.classList.remove("dragging");
+      [...list.children].forEach((child) => child.classList.remove("drag-over"));
+    });
+    item.addEventListener("dragover", (event) => {
+      if (draggedSubmissionIndex === null || draggedSubmissionIndex === index) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      item.classList.add("drag-over");
+    });
+    item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+    item.addEventListener("drop", (event) => {
+      event.preventDefault();
+      item.classList.remove("drag-over");
+      moveSubmissionTo(draggedSubmissionIndex, index);
+    });
+    const label = document.createElement("span");
+    label.textContent = `${entry.video_id},${entry.frame_id}`;
+    label.title = `${entry.keyframe_id} · ${fmtTime(entry.timestamp_ms)}`;
+    const actions = document.createElement("span");
+    actions.className = "submission-item-actions";
+    actions.append(
+      (() => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "×";
+        button.title = "Xóa khỏi danh sách nộp";
+        button.addEventListener("click", () => removeSubmission(index));
+        return button;
+      })(),
+    );
+    item.append(label, actions);
+    list.appendChild(item);
+  });
+}
+
+function addToSubmission(result) {
+  const frame = selectedFrame(result);
+  if (!frame) {
+    setStatus("Shot này không có keyframe có thể nộp.");
+    return;
+  }
+  const entry = {
+    video_id: result.video_id,
+    frame_id: frame.frame_id,
+    keyframe_id: frame.keyframe_id,
+    timestamp_ms: frame.timestamp_ms,
+  };
+  if (state.submission.some((item) => submissionKey(item) === submissionKey(entry))) {
+    setStatus("Frame này đã nằm trong danh sách nộp.");
+    return;
+  }
+  if (state.submission.length >= 100) {
+    setStatus("Danh sách nộp đã đủ 100 đáp án.");
+    return;
+  }
+  state.submission.push(entry);
+  persistSubmission();
+  renderSubmission();
+  setStatus(`Đã thêm ${entry.video_id}, frame ${entry.frame_id} vào danh sách nộp.`);
+}
+
+function removeSubmission(index) {
+  state.submission.splice(index, 1);
+  persistSubmission();
+  renderSubmission();
+}
+
+function moveSubmissionTo(source, target) {
+  if (source === null || source === target || source < 0 || target < 0 ||
+      source >= state.submission.length || target >= state.submission.length) return;
+  const [entry] = state.submission.splice(source, 1);
+  // Dropping on a row places the dragged row immediately before it.
+  state.submission.splice(source < target ? target - 1 : target, 0, entry);
+  persistSubmission();
+  renderSubmission();
+}
+
+function clearSubmission() {
+  if (!state.submission.length || !window.confirm("Xóa toàn bộ danh sách nộp?")) return;
+  state.submission = [];
+  persistSubmission();
+  renderSubmission();
+  setStatus("Đã xóa danh sách nộp.");
+}
+
+function downloadSubmission(kind) {
+  if (!state.submission.length) return;
+  const isCsv = kind === "csv";
+  const content = isCsv
+    ? state.submission.map((entry) => `${entry.video_id},${entry.frame_id}`).join("\n") + "\n"
+    : JSON.stringify(state.submission.map(({ video_id, frame_id }) =>
+      ({ video_id, frame_id })), null, 2) + "\n";
+  const blob = new Blob([content], { type: isCsv ? "text/csv" : "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `aic-kis-submission.${kind}`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus(`Đã xuất ${state.submission.length} đáp án KIS dạng ${kind.toUpperCase()}.`);
+}
+
 function renderResults() {
   const container = $("results");
   container.replaceChildren();
   state.results.slice(0, state.visibleResults).forEach((r, i) => {
+    const activeFrame = selectedFrame(r);
+    const activeTimestamp = activeFrame?.timestamp_ms ?? r.timestamp_ms;
     const card = document.createElement("article");
     card.className = "card";
     card.tabIndex = 0;
@@ -118,19 +281,29 @@ function renderResults() {
 
     const location = document.createElement("div");
     location.className = "location";
-    location.textContent = `${r.video_id} · ${fmtTime(r.timestamp_ms)}`;
+    location.textContent = activeFrame
+      ? `${r.video_id} · frame ${activeFrame.frame_id} · ${fmtTime(activeTimestamp)}`
+      : `${r.video_id} · ${fmtTime(activeTimestamp)}`;
     card.appendChild(location);
 
     if (Array.isArray(r.frames) && r.frames.length) {
       const strip = document.createElement("div");
       strip.className = "strip";
-      for (const src of r.frames.slice(0, 4)) {
+      for (const frame of r.frames.slice(0, 4)) {
         const img = document.createElement("img");
-        img.src = src;
+        img.src = frame.url;
         img.loading = "lazy";
         img.decoding = "async";
         img.fetchPriority = "low";
-        img.alt = r.shot_key;
+        img.alt = `${r.video_id}, frame ${frame.frame_id}`;
+        img.title = `Chọn frame ${frame.frame_id} (${fmtTime(frame.timestamp_ms)})`;
+        img.classList.toggle("frame-selected", frame.keyframe_id === activeFrame?.keyframe_id);
+        img.addEventListener("click", (event) => {
+          event.stopPropagation();
+          state.selectedFrames.set(r.shot_key, frame.keyframe_id);
+          select(i);
+          renderResults();
+        });
         strip.appendChild(img);
       }
       card.appendChild(strip);
@@ -170,7 +343,7 @@ function renderResults() {
     const pos = document.createElement("div");
     pos.className = "pos";
     const span = Math.max(r.t_end_ms - r.t_start_ms, 1);
-    pos.style.left = `${(100 * (r.timestamp_ms - r.t_start_ms)) / span}%`;
+    pos.style.left = `${(100 * (activeTimestamp - r.t_start_ms)) / span}%`;
     timeline.appendChild(pos);
     card.appendChild(timeline);
 
@@ -203,8 +376,12 @@ function renderResults() {
         sendFeedback(r.shot_key, true), "positive"),
       makeAction("Không đúng", "Phản hồi: kết quả không phù hợp (X)", () =>
         sendFeedback(r.shot_key, false), "negative"),
-      makeAction("Nộp", "Xem dữ liệu kết quả tạm thời (S)", submitSelected,
-        "submit"),
+      makeAction(
+        "Thêm để nộp",
+        "Thêm keyframe đang chọn vào danh sách nộp KIS (S)",
+        () => addToSubmission(r),
+        "submit",
+      ),
     );
     card.appendChild(actions);
     container.appendChild(card);
@@ -319,6 +496,7 @@ function applyResponse(data) {
   renderSession();
   renderPlanner(data.planner);
   renderAdvisor(data.advisor ?? null);
+  renderSubmission();
 }
 
 // Read-only preview of the fused ranking (streaming): show the candidates but
@@ -350,6 +528,15 @@ function select(i) {
 async function runSearch() {
   const query = $("query").value.trim();
   if (!query) return;
+  if (state.lastQuery && query !== state.lastQuery && state.submission.length &&
+      !window.confirm("Đây là query mới. Xóa danh sách nộp của query trước?")) {
+    return;
+  }
+  if (state.lastQuery && query !== state.lastQuery && state.submission.length) {
+    state.submission = [];
+    persistSubmission();
+    renderSubmission();
+  }
   state.lastQuery = query;
   state.positives.clear();
   state.negatives.clear();
@@ -418,28 +605,10 @@ async function findSimilar(shotKey) {
   }
 }
 
-async function submitSelected() {
+function submitSelected() {
   const r = state.results[state.selected];
   if (!r) return;
-  try {
-    const data = await api("/api/submit", {
-      video_id: r.video_id,
-      timestamp_ms: r.timestamp_ms,
-      session_id: state.session?.session_id ?? null,
-      result_version: state.resultVersion,
-    });
-    $("submit-payload").textContent = data.payload;
-    $("submit-note").textContent =
-      "Bản xem trước hiện dùng timestamp_ms. Theo PDF của BTC, format chính " +
-      "thức cần frame_id; chưa dùng payload này để nộp khi BTC chưa công bố schema.";
-    $("submit-dialog").showModal();
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(data.payload).catch(() => {});
-    }
-    setStatus(`Submission ready (${data.format}).`);
-  } catch (err) {
-    setStatus(err.message);
-  }
+  addToSubmission(r);
 }
 
 async function runEscalation(name) {
@@ -509,7 +678,6 @@ async function addReveal() {
 document.addEventListener("keydown", (event) => {
   const inInput = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
   if (event.key === "Escape") {
-    if ($("submit-dialog").open) $("submit-dialog").close();
     document.activeElement.blur();
     return;
   }
@@ -541,6 +709,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 loadEscalations();
+renderSubmission();
 
 $("search-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -559,13 +728,16 @@ $("reveal-input").addEventListener("keydown", (event) => {
     addReveal();
   }
 });
+$("submission-export-csv").addEventListener("click", () => downloadSubmission("csv"));
+$("submission-export-json").addEventListener("click", () => downloadSubmission("json"));
+$("submission-clear").addEventListener("click", clearSubmission);
 $("submit-close").addEventListener("click", () => $("submit-dialog").close());
 $("submit-copy").addEventListener("click", async () => {
   const text = $("submit-payload").textContent;
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    $("submit-note").textContent = "Đã sao chép dữ liệu kết quả vào clipboard.";
+    $("submit-note").textContent = "Đã sao chép payload vào clipboard.";
   } catch {
     $("submit-note").textContent = "Không thể tự sao chép; hãy chọn và copy nội dung bên dưới.";
   }

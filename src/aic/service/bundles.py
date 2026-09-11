@@ -20,6 +20,15 @@ from aic.manifest import read_manifest
 logger = logging.getLogger(__name__)
 
 
+class KeyframeRef(StrictModel):
+    """One keyframe exposed to the KIS operator and submission queue."""
+
+    keyframe_id: str
+    frame_id: int
+    timestamp_ms: int
+    name: str
+
+
 class EvidenceBundle(StrictModel):
     shot_key: str
     video_id: str
@@ -35,6 +44,10 @@ class EvidenceBundle(StrictModel):
         default_factory=list,
         description="Keyframe image file names (relative to the keyframes "
         "directory), timeline order.",
+    )
+    frame_refs: list[KeyframeRef] = Field(
+        default_factory=list,
+        description="Keyframe submission metadata in the same order as frames.",
     )
 
     @property
@@ -59,7 +72,7 @@ class EvidenceBundle(StrictModel):
 
 def load_bundles(cfg: Config) -> dict[str, EvidenceBundle]:
     """shot_key -> bundle, from chronicle.jsonl plus the keyframes manifest."""
-    frames_by_shot: dict[str, list[tuple[int, str]]] = {}
+    frames_by_shot: dict[str, list[KeyframeRef]] = {}
     for record in read_manifest(cfg.paths.manifests_dir / KEYFRAMES_MANIFEST):
         key = f"{record['video_id']}:{record['shot_id']}"
         # Keyframe images live under a per-video subdirectory of the
@@ -68,13 +81,20 @@ def load_bundles(cfg: Config) -> dict[str, EvidenceBundle]:
         # file name here 404'd every console thumbnail and starved
         # VLM-verify of its frames.
         name = f"{record['video_id']}/{Path(record['image_path']).name}"
-        frames_by_shot.setdefault(key, []).append((record["timestamp_ms"], name))
+        frames_by_shot.setdefault(key, []).append(
+            KeyframeRef(
+                keyframe_id=str(record["keyframe_id"]),
+                frame_id=int(record["frame_idx"]),
+                timestamp_ms=int(record["timestamp_ms"]),
+                name=name,
+            )
+        )
 
     bundles = {}
     for chron in load_chronicle(cfg):
-        frames = [
-            name for _ts, name in sorted(frames_by_shot.get(chron.shot_key, []))
-        ]
+        frame_refs = sorted(
+            frames_by_shot.get(chron.shot_key, []), key=lambda ref: ref.timestamp_ms
+        )
         bundles[chron.shot_key] = EvidenceBundle(
             shot_key=chron.shot_key,
             video_id=chron.video_id,
@@ -86,7 +106,8 @@ def load_bundles(cfg: Config) -> dict[str, EvidenceBundle]:
             actions=chron.actions,
             ocr_lines=[line.text for line in chron.ocr],
             asr_text=chron.asr_text,
-            frames=frames,
+            frames=[ref.name for ref in frame_refs],
+            frame_refs=frame_refs,
         )
     logger.info("loaded %d evidence bundles", len(bundles))
     return bundles
