@@ -1,10 +1,20 @@
-# Local runtime storage mounted from the Windows partition.
-/data
-/.venv
+# Local runtime storage (corpus, keyframes, embeddings, large manifests).
+/data/
+/.venv/
 
 # Python-generated files.
 __pycache__/
 *.py[cod]
 *.egg-info/
+build/
+dist/
+
+# Tool caches.
 .pytest_cache/
 .ruff_cache/
+.ipynb_checkpoints/
+
+# Editor / OS.
+.vscode/
+.idea/
+.DS_Store

@@ -1,8 +1,9 @@
-import modal
 import os
-import sys
 import runpy
+import sys
 from pathlib import Path
+
+import modal
 
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = Path("/opt/aic")
@@ -35,34 +36,34 @@ frames_volume = modal.Volume.from_name("aic-frames", create_if_missing=False)
 )
 def run_ocr() -> None:
     os.chdir("/opt/aic")
-    
+
     # We output to /mnt/out/manifests
     Path("/mnt/out/manifests").mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
-    
+
     # Symlink manifests from volume
     try:
         os.symlink("/mnt/out/manifests", "data/manifests")
     except FileExistsError:
         pass
-    
+
     # Symlink keyframes from volume
     # aic-frames has the keyframe folders at its root (e.g., L21_V001/...)
     try:
         os.symlink("/mnt/frames/keyframes", "data/keyframes")
     except FileExistsError:
         pass
-        
+
     print("Running build_chronicle.py for OCR...", flush=True)
     # run with --skip-asr and --skip-entities
     sys.argv = ["/opt/aic/scripts/build_chronicle.py", "--config", "/opt/aic/configs/t0.yaml", "--skip-asr", "--skip-entities", "--num-gpus", "4"]
-    
+
     try:
         runpy.run_path("/opt/aic/scripts/build_chronicle.py", run_name="__main__")
     except SystemExit as e:
         if e.code != 0:
             raise RuntimeError(f"OCR failed with code {e.code}")
-    
+
     embed_results.commit()
     print("OCR completed and volume committed.", flush=True)
 

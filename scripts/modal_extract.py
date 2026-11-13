@@ -1,6 +1,6 @@
-import modal
-import os
 from pathlib import Path
+
+import modal
 
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,19 +22,19 @@ frames_volume = modal.Volume.from_name("aic-frames", create_if_missing=True)
 )
 def extract_data() -> None:
     import tarfile
-    
+
     Path("/mnt/out/manifests").mkdir(parents=True, exist_ok=True)
     Path("/mnt/frames/keyframes").mkdir(parents=True, exist_ok=True)
-    
+
     raw_tars = list(Path("/opt/aic/raw-keyframes").glob("*.tar"))
     if not raw_tars:
         raise RuntimeError("No TAR files found in /opt/aic/raw-keyframes")
-    
+
     print("Extracting images and manifests to persistent volumes...", flush=True)
     with open("/mnt/out/manifests/keyframes.jsonl", "w") as out_kf, \
          open("/mnt/out/manifests/shots.jsonl", "w") as out_shots, \
          open("/mnt/out/manifests/videos.jsonl", "w") as out_vids:
-         
+
         for i, tar_path in enumerate(raw_tars):
             if i % 50 == 0:
                 print(f"Extracting {i}/{len(raw_tars)}...", flush=True)
@@ -53,7 +53,7 @@ def extract_data() -> None:
                     elif member.name == "data/manifests/videos.jsonl":
                         f = tar.extractfile(member)
                         if f: out_vids.write(f.read().decode("utf-8"))
-                            
+
     embed_results.commit()
     frames_volume.commit()
     print("Extraction complete!", flush=True)

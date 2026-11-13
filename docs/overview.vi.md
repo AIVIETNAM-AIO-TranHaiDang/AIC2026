@@ -42,14 +42,12 @@ Cuộc thi theo định dạng **Video Browser Showdown (VBS)** và **Lifelog Se
 ## 3. Cấu trúc thư mục
 
 ```
-AIC2026_prepare/
+aic2026/
 ├── CLAUDE.md                # Hướng dẫn cho AI agent và lập trình viên
 ├── README.md                # Tệp giới thiệu dự án
 ├── requirements.txt         # Các dependency runtime
-├── requirements-dev.txt     # Công cụ test/chất lượng (pytest, ruff)
 ├── requirements-gpu.txt     # Backend dành cho GPU server
-├── implementation-notes.md  # Nhật ký quyết định và đánh đổi
-├── pyproject.toml  u         # Metadata package, cấ hình pytest và ruff
+├── pyproject.toml           # Metadata package, cấu hình pytest và ruff
 ├── configs/                 # Cấu hình profile (t0.yaml) và ví dụ fixture
 ├── src/aic/                 # Package pipeline chính
 ├── scripts/                 # Các script thực thi

@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "AIC 2026 event-retrieval system (KIS pipeline)"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -29,3 +32,5 @@ select = ["E", "F", "W", "I", "UP", "B"]
 # Notebook cells mix shell magics with code; a `!pip install git+...@sha`
 # line cannot be wrapped.
 "*.ipynb" = ["E501"]
+# Throwaway Modal runner scripts: long f-string log lines, one-line guards.
+"scripts/modal_*.py" = ["E501", "E701", "B904"]

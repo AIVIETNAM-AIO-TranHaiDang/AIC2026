@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Thiết lập và Phát triển (Setup and Development)
 - Tạo và kích hoạt môi trường ảo: `python -m venv .venv && source .venv/bin/activate`
-- Cài đặt thư viện phụ thuộc: `pip install -r requirements.txt -r requirements-dev.txt`
-- Cài đặt gói ở chế độ có thể chỉnh sửa (editable mode): `pip install -e .`
+- Cài đặt thư viện phụ thuộc: `pip install -r requirements.txt`
+- Cài đặt gói ở chế độ có thể chỉnh sửa kèm công cụ dev (pytest, ruff): `pip install -e ".[dev]"`
 - Kiểm tra lỗi cú pháp và định dạng mã nguồn (lint): `ruff check .`
 - Chạy toàn bộ kiểm thử (test): `pytest`
-- Chạy một tệp kiểm thử duy nhất: `pytest tests/test_ingest.py`
-- Chạy một trường hợp kiểm thử cụ thể: `pytest tests/test_ingest.py -k test_shot_boundary`
+- Chạy một tệp kiểm thử duy nhất: `pytest tests/test_fast_meta.py`
+- Chạy một trường hợp kiểm thử cụ thể: `pytest tests/test_fast_meta.py -k <tên_test>`
 
 ### Quy trình Lập chỉ mục Ngoại tuyến (Offline Indexing Pipeline)
 - Trích xuất shots và keyframes từ video thô: `python scripts/ingest_corpus.py --config configs/t0.yaml --num-gpus 4`

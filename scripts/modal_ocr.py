@@ -1,6 +1,7 @@
-import modal
 import os
 from pathlib import Path
+
+import modal
 
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = Path("/opt/aic")
@@ -34,26 +35,25 @@ frames_volume = modal.Volume.from_name("aic-frames", create_if_missing=True)
     }
 )
 def run_ocr() -> None:
-    import tarfile
-    import sys
     import runpy
-    import shutil
+    import sys
+    import tarfile
     os.chdir("/opt/aic")
-    
+
     # We will output manifests to the persistent volume
     Path("/mnt/out/manifests").mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
     Path("data/manifests").symlink_to("/mnt/out/manifests")
-    
+
     # Symlink keyframes to the frames volume to save them permanently
     Path("/mnt/frames/keyframes").mkdir(parents=True, exist_ok=True)
     Path("data/keyframes").symlink_to("/mnt/frames/keyframes")
-    
+
     print("Preparing data from TARs...", flush=True)
     raw_tars = list(Path("/opt/aic/raw-keyframes").glob("*.tar"))
     if not raw_tars:
         raise RuntimeError("No TAR files found in /opt/aic/raw-keyframes")
-    
+
     # We aggregate the manifests so that build_chronicle and serve can read them
     # We also extract the JPEGs to data/keyframes
     with open("data/manifests/keyframes.jsonl", "w") as out_kf, \
@@ -75,16 +75,16 @@ def run_ocr() -> None:
                     elif member.name == "data/manifests/videos.jsonl":
                         f = tar.extractfile(member)
                         if f: out_vids.write(f.read().decode("utf-8"))
-                            
+
     print("Data preparation complete. Running build_chronicle.py...", flush=True)
     sys.argv = ["scripts/build_chronicle.py", "--config", "configs/t0.yaml", "--skip-asr", "--skip-entities", "--num-gpus", "4"]
-    
+
     try:
         runpy.run_path("scripts/build_chronicle.py", run_name="__main__")
     except SystemExit as e:
         if e.code != 0:
             raise RuntimeError(f"OCR failed with code {e.code}")
-    
+
     embed_results.commit()
     frames_volume.commit()
     print("OCR completed and volumes committed.", flush=True)

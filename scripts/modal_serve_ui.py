@@ -76,7 +76,6 @@ def fastapi_app():
 
     sys.path.insert(0, str(REMOTE_ROOT / "src"))
 
-    from fastapi import FastAPI
     from fastapi.responses import HTMLResponse, JSONResponse
 
     real_app = None

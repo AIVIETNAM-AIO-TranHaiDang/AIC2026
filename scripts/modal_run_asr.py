@@ -1,10 +1,11 @@
-import modal
 import os
-import sys
 import runpy
-from pathlib import Path
+import sys
 import urllib.request
 import zipfile
+from pathlib import Path
+
+import modal
 
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
 REMOTE_ROOT = Path("/opt/aic")
@@ -19,7 +20,7 @@ image = (
     .add_local_dir(LOCAL_ROOT / "configs", remote_path=str(REMOTE_ROOT / "configs"), copy=True)
     .add_local_dir(LOCAL_ROOT / "scripts", remote_path=str(REMOTE_ROOT / "scripts"), copy=True)
     # Upload the downloaded videos.jsonl so the job knows what to transcribe
-    .add_local_file(LOCAL_ROOT / "local_temp_manifests" / "videos.jsonl", remote_path=str(REMOTE_ROOT / "data" / "manifests" / "videos.jsonl"))
+    .add_local_file(LOCAL_ROOT / "artifacts" / "videos.jsonl", remote_path=str(REMOTE_ROOT / "data" / "manifests" / "videos.jsonl"))
 )
 
 app = modal.App("aic-asr-pipeline")
@@ -75,7 +76,7 @@ def run_asr():
     Path("data/videos").mkdir(parents=True, exist_ok=True)
     Path("data/manifests").mkdir(parents=True, exist_ok=True)
     Path("/mnt/out/manifests").mkdir(parents=True, exist_ok=True)
-    
+
     # Symlink to save the final output
     try:
         os.symlink("/mnt/out/manifests/asr.jsonl", "data/manifests/asr.jsonl")
@@ -99,7 +100,7 @@ def run_asr():
                     with open(target_path, "wb") as target:
                         import shutil
                         shutil.copyfileobj(source, target)
-    
+
     print("Extraction complete. Running build_chronicle.py for ASR...", flush=True)
     # run with --skip-ocr and --skip-entities
     sys.argv = ["/opt/aic/scripts/build_chronicle.py", "--config", "/opt/aic/configs/t0.yaml", "--skip-ocr", "--skip-entities", "--num-gpus", "2"]
@@ -108,7 +109,7 @@ def run_asr():
     except SystemExit as e:
         if e.code != 0:
             raise RuntimeError(f"ASR failed with code {e.code}")
-    
+
     asr_results.commit()
     print("ASR completed and committed.", flush=True)
 

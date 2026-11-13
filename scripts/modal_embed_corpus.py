@@ -5,9 +5,10 @@ Run on the NEW workspace profile:
 """
 
 from __future__ import annotations
+
 import os
-import subprocess
 from pathlib import Path
+
 import modal
 
 LOCAL_ROOT = Path(__file__).resolve().parents[1]
@@ -42,27 +43,26 @@ embed_results = modal.Volume.from_name("aic-embeddings", create_if_missing=True)
     }
 )
 def run_embed() -> None:
-    import tarfile
-    import shutil
-    import sys
     import runpy
+    import sys
+    import tarfile
     os.chdir("/opt/aic")
-    
+
     Path("/mnt/out/embeddings").mkdir(parents=True, exist_ok=True)
     Path("/mnt/out/indexes").mkdir(parents=True, exist_ok=True)
-    
+
     Path("data/embeddings").symlink_to("/mnt/out/embeddings")
     Path("data/indexes").symlink_to("/mnt/out/indexes")
-    
+
     print("Preparing data from TARs...", flush=True)
     raw_tars = list(Path("/opt/aic/raw-keyframes").glob("*.tar"))
     if not raw_tars:
         raise RuntimeError("No TAR files found in /opt/aic/raw-keyframes")
-    
+
     # Extract to /opt/aic/data (JPEGs go into /opt/aic/data/keyframes/..., manifest into /opt/aic/data/manifests/)
     # But since /opt/aic/data/keyframes is NOT a volume anymore, we can just extract to disk.
     Path("data/manifests").mkdir(parents=True, exist_ok=True)
-    
+
     # We aggregate the manifests
     with open("data/manifests/keyframes.jsonl", "w") as out_kf:
         for i, tar_path in enumerate(raw_tars):
@@ -77,16 +77,16 @@ def run_embed() -> None:
                         f = tar.extractfile(member)
                         if f:
                             out_kf.write(f.read().decode("utf-8"))
-                            
+
     print("Data preparation complete. Running embed_corpus.py...", flush=True)
     sys.argv = ["scripts/embed_corpus.py", "--config", "configs/t0.yaml"]
-    
+
     try:
         runpy.run_path("scripts/embed_corpus.py", run_name="__main__")
     except SystemExit as e:
         if e.code != 0:
             raise RuntimeError(f"Embedding failed with code {e.code}")
-    
+
     embed_results.commit()
     print("Embedding completed and volume committed.", flush=True)
 
